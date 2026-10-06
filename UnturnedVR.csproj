@@ -1,0 +1,101 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>UnturnedVR</AssemblyName>
+    <RootNamespace>UnturnedVR</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+
+  </PropertyGroup>
+
+  <!-- local.props sets UnturnedInstallDir to this machine's game install; gitignored, never committed. -->
+  <Import Project="local.props" Condition="Exists('local.props')" />
+
+  <ItemGroup>
+    <PackageReference Include="Lib.Harmony" Version="2.3.3" />
+  </ItemGroup>
+
+  <!-- Game assemblies are never shipped in this repo; reference them from the local install. -->
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AssetBundleModule">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.AssetBundleModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- M3: XRNode/InputTracking (head pose polling) and AudioListener (VR rig's listener). -->
+    <Reference Include="UnityEngine.XRModule">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.XRModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- XRDevice.userPresence / XRSettings.isDeviceActive (VRSessionMonitor diagnostics). -->
+    <Reference Include="UnityEngine.VRModule">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.VRModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.Postprocessing.Runtime">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\Unity.Postprocessing.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.SubsystemsModule">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.SubsystemsModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- M4: outline renderer for interactable objects (shipped with the game; not in the SDK/editor build). -->
+    <Reference Include="HighlightingSystem">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\HighlightingSystem.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- M4: SleekWindow (PlayerUI.window.showCursor = a cursor UI like the inventory is open). -->
+    <Reference Include="SDG.Glazier.Runtime">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\SDG.Glazier.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- M4: recenter key (UnityEngine.Input). -->
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- M4: Canvas / RenderMode for the Glazier UI canvas. -->
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.UIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AudioModule">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.AudioModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- M2 probe only: Unity.XR.Management.dll is not part of the base install, we're adding it.
+       Sourced from the VHVR release zip (reference/, gitignored) purely to test whether an
+       XRGeneralSettings AssetBundle built for Unity 2019.4.21 still deserializes under 2022.3.62f3. -->
+  <ItemGroup>
+    <Reference Include="Unity.XR.Management">
+      <HintPath>$(VhvrReleaseDataDir)\Managed\Unity.XR.Management.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <!-- TrackedPoseDriver (UnityEngine.SpatialTracking), as used by VHVR's SteamVR Player prefab. Same
+         2019.4-built-DLL-under-2022.3 caveat as above (guess: should load fine). -->
+    <Reference Include="UnityEngine.SpatialTracking">
+      <HintPath>$(VhvrReleaseDataDir)\Managed\UnityEngine.SpatialTracking.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Unity.XR.OpenVR">
+      <HintPath>$(VhvrReleaseDataDir)\Managed\Unity.XR.OpenVR.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
