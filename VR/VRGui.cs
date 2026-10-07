@@ -45,6 +45,7 @@ namespace UnturnedVR.VR
         private bool standalone;
         private bool menuLayout = true;
         private bool menuPoseValid;
+        private bool hadHeadPose = true;
         private Vector3 menuEyeAnchor;
         private Vector3 menuPanelPosition;
         private Quaternion menuPanelRotation;
@@ -81,7 +82,7 @@ namespace UnturnedVR.VR
                 CreateOverlayCamera();
                 eyeCamera = null;
                 standalone = false;
-                UnturnedLog.info("[UnturnedVR] VRGui: overlay camera was destroyed with its parent camera; recreated.");
+                VRLog.Info("overlay camera was destroyed with its parent camera; recreated.");
             }
 
             if (uiTexture.width != Screen.width || uiTexture.height != Screen.height)
@@ -172,7 +173,7 @@ namespace UnturnedVR.VR
                 }
             }
 
-            UnturnedLog.info("[UnturnedVR] VRGui diag: eye=" + eyeInfo
+            VRLog.Info("diag: eye=" + eyeInfo
                 + "; panel " + (panel == null ? "null" : "active=" + panel.gameObject.activeSelf + " pos=" + panel.position + " scale=" + panel.localScale)
                 + "; overlayCam enabled=" + (overlayCamera != null && overlayCamera.enabled) + " parent=" + (overlayCamera != null && overlayCamera.transform.parent != null ? overlayCamera.transform.parent.name : "none")
                 + "; canvas mode=" + canvas.renderMode + " worldCam=" + (canvas.worldCamera != null) + " rect=" + ((RectTransform)canvas.transform).rect.size
@@ -203,7 +204,7 @@ namespace UnturnedVR.VR
             PanelLayer = panelLayer;
             if (panelLayer < 0)
             {
-                UnturnedLog.error("[UnturnedVR] VRGui: no free layer for the UI panel.");
+                VRLog.Error("no free layer for the UI panel.");
                 enabled = false;
                 return false;
             }
@@ -237,7 +238,7 @@ namespace UnturnedVR.VR
             CreateOverlayCamera();
             CreatePanel();
 
-            UnturnedLog.info("[UnturnedVR] VRGui: Glazier canvas switched to ScreenSpaceCamera -> " + uiTexture.width + "x" + uiTexture.height + " texture, panel layer " + panelLayer + ".");
+            VRLog.Info("Glazier canvas switched to ScreenSpaceCamera -> " + uiTexture.width + "x" + uiTexture.height + " texture, panel layer " + panelLayer + ".");
             return true;
         }
 
@@ -369,10 +370,15 @@ namespace UnturnedVR.VR
         // (scripted menu camera pans), which head movement alone never does.
         private void PlaceMenuPanel(Transform eye)
         {
-            if (VRRig.ActiveCamera != null && !VRRig.HasHeadPose)
+            // Place from the camera's forward even without a head pose (the editor's OpenXR session often
+            // never delivers one); otherwise the panel stays where it was and the rig faces away from it.
+            // Re-place once the first pose arrives, since that changes the view direction and height.
+            bool hasPose = VRRig.ActiveCamera == null || VRRig.HasHeadPose;
+            if (hasPose && !hadHeadPose)
             {
-                return; // wait for the first head pose, or the panel would be placed from the unrotated camera
+                needsRecenter = true;
             }
+            hadHeadPose = hasPose;
 
             bool cameraMovedFar = (eye.position - menuEyeAnchor).sqrMagnitude > MenuReanchorDistance * MenuReanchorDistance;
             if (needsRecenter || cameraMovedFar || !menuPoseValid)

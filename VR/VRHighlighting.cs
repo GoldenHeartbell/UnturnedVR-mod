@@ -37,7 +37,7 @@ namespace UnturnedVR.VR
                 if (!loggedCreated)
                 {
                     loggedCreated = true;
-                    UnturnedLog.info("[UnturnedVR] VRHighlighting: added HighlightingRenderer to the VR camera (outline for interactable objects).");
+                    VRLog.Info("added HighlightingRenderer to the VR camera (outline for interactable objects).");
                 }
             }
 
@@ -64,12 +64,12 @@ namespace UnturnedVR.VR
             }
             loggedComponents = true;
 
-            var sb = new System.Text.StringBuilder("[UnturnedVR] MainCamera components:");
+            var sb = new System.Text.StringBuilder("MainCamera components:");
             foreach (Component component in camera.GetComponents<Component>())
             {
                 sb.Append(' ').Append(component == null ? "<missing>" : component.GetType().Name);
             }
-            UnturnedLog.info(sb.ToString());
+            VRLog.Info(sb.ToString());
         }
     }
 }

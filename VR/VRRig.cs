@@ -43,14 +43,14 @@ namespace UnturnedVR.VR
         {
             if (player == null || player.first == null)
             {
-                UnturnedLog.error("[UnturnedVR] VRRig: local player or player.first is null, cannot attach.");
+                VRLog.Error("local player or player.first is null, cannot attach.");
                 return;
             }
 
             Camera mainCamera = MainCamera.instance;
             if (mainCamera == null)
             {
-                UnturnedLog.error("[UnturnedVR] VRRig: MainCamera.instance is null, cannot attach.");
+                VRLog.Error("MainCamera.instance is null, cannot attach.");
                 return;
             }
 
@@ -67,7 +67,7 @@ namespace UnturnedVR.VR
 
             DisableMainCamera(mainCamera);
 
-            UnturnedLog.info("[UnturnedVR] VRRig: attached VR camera rig to local player's head anchor.");
+            VRLog.Info("attached VR camera rig to local player's head anchor.");
         }
 
         /// <summary>
@@ -96,7 +96,7 @@ namespace UnturnedVR.VR
 
             DisableMainCamera(mainCamera);
 
-            UnturnedLog.info("[UnturnedVR] VRRig: attached VR camera rig to the menu camera.");
+            VRLog.Info("attached VR camera rig to the menu camera.");
         }
 
         /// <summary>
@@ -170,15 +170,16 @@ namespace UnturnedVR.VR
             rigYawOffset = 0f;
             rigHeight = rigObject.AddComponent<VRRigHeight>();
             rigHeight.Hmd = hmdObject.transform;
-            rigObject.AddComponent<VRSessionMonitor>();
-#if !UNITY_EDITOR
+            if (VRDebugFlags.SessionMonitor)
+            {
+                rigObject.AddComponent<VRSessionMonitor>();
+            }
             hmdObject.AddComponent<VROpenVRPoseFallback>();
-#endif
 #if UNITY_EDITOR
             rigObject.AddComponent<VRDebugKeys>();
 #endif
 
-            UnturnedLog.info("[UnturnedVR] VRRig: created VR camera rig GameObject.");
+            VRLog.Info("created VR camera rig GameObject.");
             return vrCamera;
         }
 
@@ -201,7 +202,7 @@ namespace UnturnedVR.VR
             if (to.renderingPath != from.renderingPath)
             {
                 to.renderingPath = from.renderingPath;
-                UnturnedLog.info("[UnturnedVR] VRRig: VR camera renderingPath -> " + from.renderingPath);
+                VRLog.Info("VR camera renderingPath -> " + from.renderingPath);
             }
             if (to.allowHDR != from.allowHDR)
             {
@@ -320,7 +321,7 @@ namespace UnturnedVR.VR
 
             target.SetActive(wasActive);
 
-            UnturnedLog.info("[UnturnedVR] VRRig: copied PostProcessLayer to VR camera (resources " + (resources != null ? "found" : "MISSING") + ").");
+            VRLog.Info("copied PostProcessLayer to VR camera (resources " + (resources != null ? "found" : "MISSING") + ").");
         }
 
         private static void DisableMainCamera(Camera mainCamera)
@@ -338,7 +339,7 @@ namespace UnturnedVR.VR
                 mainCameraListener.enabled = false;
             }
 
-            UnturnedLog.info("[UnturnedVR] VRRig: disabled MainCamera (PlayerLook keeps writing to its transform harmlessly).");
+            VRLog.Info("disabled MainCamera (PlayerLook keeps writing to its transform harmlessly).");
         }
     }
 }

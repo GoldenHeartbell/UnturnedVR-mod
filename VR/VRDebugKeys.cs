@@ -9,7 +9,7 @@ namespace UnturnedVR.VR
     /// <summary>
     /// Editor-only: toggles for tracking down rendering differences between the game's MainCamera
     /// and the VR camera while looking at the scene in the headset.
-    ///   F6 toggle PostProcessLayer   F7 toggle HDR   F8 cycle rendering path   F9 dump both cameras
+    ///   F5 toggle session monitor   F6 toggle PostProcessLayer   F7 toggle HDR   F8 cycle rendering path   F9 dump both cameras
     /// </summary>
     internal class VRDebugKeys : MonoBehaviour
     {
@@ -23,24 +23,39 @@ namespace UnturnedVR.VR
                 return;
             }
 
+            if (Input.GetKeyDown(KeyCode.F5))
+            {
+                VRSessionMonitor monitor = GetComponent<VRSessionMonitor>();
+                VRDebugFlags.SessionMonitor = monitor == null;
+                if (monitor == null)
+                {
+                    gameObject.AddComponent<VRSessionMonitor>();
+                }
+                else
+                {
+                    Destroy(monitor);
+                }
+                VRLog.Info("debug: SessionMonitor " + (VRDebugFlags.SessionMonitor ? "enabled" : "disabled"));
+            }
+
             if (Input.GetKeyDown(KeyCode.F6))
             {
                 PostProcessLayer layer = cam.GetComponent<PostProcessLayer>();
                 if (layer != null)
                 {
                     layer.enabled = !layer.enabled;
-                    UnturnedLog.info("[UnturnedVR] debug: PostProcessLayer enabled = " + layer.enabled);
+                    VRLog.Info("debug: PostProcessLayer enabled = " + layer.enabled);
                 }
                 else
                 {
-                    UnturnedLog.info("[UnturnedVR] debug: VR camera has no PostProcessLayer.");
+                    VRLog.Info("debug: VR camera has no PostProcessLayer.");
                 }
             }
 
             if (Input.GetKeyDown(KeyCode.F7))
             {
                 cam.allowHDR = !cam.allowHDR;
-                UnturnedLog.info("[UnturnedVR] debug: allowHDR = " + cam.allowHDR);
+                VRLog.Info("debug: allowHDR = " + cam.allowHDR);
             }
 
             if (Input.GetKeyDown(KeyCode.F8))
@@ -48,7 +63,7 @@ namespace UnturnedVR.VR
                 cam.renderingPath = cam.renderingPath == RenderingPath.DeferredShading
                     ? RenderingPath.Forward
                     : RenderingPath.DeferredShading;
-                UnturnedLog.info("[UnturnedVR] debug: renderingPath = " + cam.renderingPath);
+                VRLog.Info("debug: renderingPath = " + cam.renderingPath);
             }
 
             if (Input.GetKeyDown(KeyCode.F9))
@@ -56,7 +71,7 @@ namespace UnturnedVR.VR
                 var sb = new StringBuilder("[UnturnedVR] debug camera dump:\n");
                 Describe(sb, "MainCamera", MainCamera.instance);
                 Describe(sb, "VR camera ", cam);
-                UnturnedLog.info(sb.ToString());
+                VRLog.Info(sb.ToString());
             }
         }
 

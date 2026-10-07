@@ -6,7 +6,7 @@ namespace UnturnedVR.VR
 {
     /// <summary>
     /// Editor-only stand-in. In the Unity editor XR is brought up by XR Plugin Management
-    /// (OpenXR loader, enabled in Project Settings > XR Plug-in Management), not by the
+    /// (Open VR loader, enabled in Project Settings > XR Plug-in Management), not by the
     /// xrmanager AssetBundle + OpenVR path used in the shipped build below.
     /// </summary>
     internal static class VRManager
@@ -14,13 +14,13 @@ namespace UnturnedVR.VR
         public static void InitializeAndStart()
         {
             // Without this the editor pauses when the Game view loses focus (always the case with the
-            // headset on), the OpenXR session drops out of its focused state and no devices are reported.
+            // headset on), the XR session drops out of its focused state and no devices are reported.
             Application.runInBackground = true;
 
             var manager = UnityEngine.XR.Management.XRGeneralSettings.Instance?.Manager;
             if (manager == null)
             {
-                UnturnedLog.error("[UnturnedVR] VRManager (editor): no XRGeneralSettings/Manager. Enable OpenXR under Project Settings > XR Plug-in Management (PC tab).");
+                VRLog.Error("(editor) no XRGeneralSettings/Manager. Enable Open VR Loader under Project Settings > XR Plug-in Management (PC tab).");
                 return;
             }
 
@@ -37,11 +37,11 @@ namespace UnturnedVR.VR
 
             if (manager.activeLoader == null)
             {
-                UnturnedLog.error("[UnturnedVR] VRManager (editor): no active XR loader. Is the OpenXR runtime (SteamVR) running with the headset connected?");
+                VRLog.Error("(editor) no active XR loader. Is SteamVR running with the headset connected?");
                 return;
             }
 
-            UnturnedLog.info("[UnturnedVR] VRManager (editor): active XR loader \"" + manager.activeLoader.name + "\".");
+            VRLog.Info("(editor) active XR loader \"" + manager.activeLoader.name + "\".");
             VRState.IsActive = true;
         }
     }
@@ -80,7 +80,7 @@ namespace UnturnedVR.VR
             XRGeneralSettings settings = LoadXRGeneralSettingsFromBundle();
             if (settings == null || settings.Manager == null)
             {
-                UnturnedLog.error("[UnturnedVR] VRManager: no usable XRGeneralSettings/Manager, aborting.");
+                VRLog.Error("no usable XRGeneralSettings/Manager, aborting.");
                 return;
             }
 
@@ -88,11 +88,11 @@ namespace UnturnedVR.VR
 
             if (!TryInitializeLoader(manager))
             {
-                UnturnedLog.error("[UnturnedVR] VRManager: failed to get an active XR loader. Is the OpenXR runtime (SteamVR) running with the headset connected?");
+                VRLog.Error("failed to get an active XR loader. Is SteamVR running with the headset connected?");
                 return;
             }
 
-            UnturnedLog.info($"[UnturnedVR] VRManager: active loader is \"{manager.activeLoader.name}\" ({manager.activeLoader.GetType()}).");
+            VRLog.Info($"active loader is \"{manager.activeLoader.name}\" ({manager.activeLoader.GetType()}).");
 
             try
             {
@@ -100,12 +100,12 @@ namespace UnturnedVR.VR
             }
             catch (Exception ex)
             {
-                UnturnedLog.error("[UnturnedVR] VRManager: exception from StartSubsystems():");
-                UnturnedLog.exception(ex);
+                VRLog.Error("exception from StartSubsystems():");
+                VRLog.Exception(ex);
                 return;
             }
 
-            UnturnedLog.info("[UnturnedVR] VRManager: StartSubsystems() called. If a headset is connected, it should now be showing the game.");
+            VRLog.Info("StartSubsystems() called. If a headset is connected, it should now be showing the game.");
 
             VRState.IsActive = true;
         }
@@ -113,7 +113,7 @@ namespace UnturnedVR.VR
         private static XRGeneralSettings LoadXRGeneralSettingsFromBundle()
         {
             string bundlePath = Path.Combine(Application.streamingAssetsPath, "xrmanager");
-            UnturnedLog.info($"[UnturnedVR] VRManager: loading AssetBundle at \"{bundlePath}\"");
+            VRLog.Info($"loading AssetBundle at \"{bundlePath}\"");
 
             AssetBundle bundle;
             try
@@ -122,14 +122,14 @@ namespace UnturnedVR.VR
             }
             catch (Exception ex)
             {
-                UnturnedLog.error("[UnturnedVR] VRManager: exception while loading xrmanager AssetBundle:");
-                UnturnedLog.exception(ex);
+                VRLog.Error("exception while loading xrmanager AssetBundle:");
+                VRLog.Exception(ex);
                 return null;
             }
 
             if (bundle == null)
             {
-                UnturnedLog.error("[UnturnedVR] VRManager: AssetBundle.LoadFromFile returned null.");
+                VRLog.Error("AssetBundle.LoadFromFile returned null.");
                 return null;
             }
 
@@ -140,11 +140,11 @@ namespace UnturnedVR.VR
             XRGeneralSettings instance = XRGeneralSettings.Instance;
             if (instance == null)
             {
-                UnturnedLog.error("[UnturnedVR] VRManager: XRGeneralSettings.Instance is still null after loading the bundle.");
+                VRLog.Error("XRGeneralSettings.Instance is still null after loading the bundle.");
                 return null;
             }
 
-            UnturnedLog.info("[UnturnedVR] VRManager: XRGeneralSettings.Instance resolved.");
+            VRLog.Info("XRGeneralSettings.Instance resolved.");
             return instance;
         }
 
@@ -160,11 +160,11 @@ namespace UnturnedVR.VR
 
             if (manager.activeLoader == null)
             {
-                UnturnedLog.error($"[UnturnedVR] VRManager: activeLoader still null after {tries} attempt(s).");
+                VRLog.Error($"activeLoader still null after {tries} attempt(s).");
                 return false;
             }
 
-            UnturnedLog.info($"[UnturnedVR] VRManager: activeLoader resolved after {tries} attempt(s).");
+            VRLog.Info($"activeLoader resolved after {tries} attempt(s).");
             return true;
         }
     }

@@ -1,5 +1,6 @@
 using HarmonyLib;
 using SDG.Unturned;
+using UnityEngine;
 
 namespace UnturnedVR.Patches
 {
@@ -13,6 +14,8 @@ namespace UnturnedVR.Patches
     [HarmonyPatch(typeof(PlayerLook), "Update")]
     internal static class PlayerLookHeadYawPatch
     {
+        private const float SmoothTurnSpeed = 120f; // degrees per second at full deflection
+
         private static void Prefix(PlayerLook __instance, ref float ____yaw)
         {
             if (!VR.VRState.IsActive || __instance.channel == null || !__instance.channel.IsLocalPlayer)
@@ -29,6 +32,14 @@ namespace UnturnedVR.Patches
                 && !__instance.player.life.isDead;
 
             ____yaw += VR.VRRig.ConsumeHeadYawDelta(bodyFollowsHead);
+
+            // M5: left stick X = smooth turn. Rotates the body (and the rig parented to it) without
+            // touching the head-delta bookkeeping above. Up/down is deliberately ignored.
+            if (bodyFollowsHead && !PlayerUI.window.showCursor && !LoadingUI.isBlocked)
+            {
+                VR.VRControllerInput.Refresh();
+                ____yaw += VR.VRControllerInput.LeftStick.x * SmoothTurnSpeed * Time.deltaTime;
+            }
         }
     }
 }

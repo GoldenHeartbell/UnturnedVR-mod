@@ -52,7 +52,7 @@ namespace UnturnedVR.VR
 
                 calibrationHeadY = Hmd.localPosition.y;
                 hasCalibratedHeight = true;
-                UnturnedLog.info("[UnturnedVR] VRRigHeight: first HMD pose received, height calibrated.");
+                VRLog.Info("first HMD pose received, height calibrated.");
             }
 
             // In the menu the rig hangs directly on the menu camera: no eye height to add.
@@ -78,7 +78,7 @@ namespace UnturnedVR.VR
             InputDevices.GetDevices(deviceBuffer);
             string devices = deviceBuffer.Count == 0 ? "none" : string.Join(", ", deviceBuffer.ConvertAll(d => "\"" + d.name + "\" [" + d.characteristics + "]"));
 
-            UnturnedLog.warn("[UnturnedVR] VRRigHeight: no HMD pose yet. XR loader: " + loader + ". Input devices: " + devices + ". " + DescribeSubsystems() + ".");
+            VRLog.Warn("no HMD pose yet. XR loader: " + loader + ". Input devices: " + devices + ". " + DescribeSubsystems() + ".");
         }
 
         private static string DescribeSubsystems()

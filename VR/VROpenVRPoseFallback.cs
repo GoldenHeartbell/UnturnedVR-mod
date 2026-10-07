@@ -1,4 +1,3 @@
-#if !UNITY_EDITOR
 using System.Collections.Generic;
 using SDG.Unturned;
 using UnityEngine;
@@ -8,7 +7,7 @@ using Valve.VR;
 namespace UnturnedVR.VR
 {
     /// <summary>
-    /// Shipped game only (the editor uses OpenXR). With the Unity OpenVR loader the XR input subsystem reported no devices
+    /// With the Unity OpenVR loader the XR input subsystem reported no devices
     /// (log: "Input devices: none") because SteamVR Input is not initialized - VHVR initializes it
     /// before the XR SDK ("to ensure SteamVR_Input is enabled", VRCore/VRManager.cs), which we defer
     /// to M5. Until then, when no head device exists in InputDevices, read the HMD pose directly from
@@ -58,7 +57,7 @@ namespace UnturnedVR.VR
                 if (!loggedNoSystem)
                 {
                     loggedNoSystem = true;
-                    UnturnedLog.warn("[UnturnedVR] VROpenVRPoseFallback: OpenVR.System is null, cannot read HMD pose directly.");
+                    VRLog.Warn("OpenVR.System is null, cannot read HMD pose directly.");
                 }
                 return;
             }
@@ -98,9 +97,8 @@ namespace UnturnedVR.VR
             if (!loggedFirstPose)
             {
                 loggedFirstPose = true;
-                UnturnedLog.info("[UnturnedVR] VROpenVRPoseFallback: using direct OpenVR HMD pose (XR input has no head device).");
+                VRLog.Info("using direct OpenVR HMD pose (XR input has no head device).");
             }
         }
     }
 }
-#endif
