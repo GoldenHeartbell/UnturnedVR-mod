@@ -34,6 +34,9 @@ namespace UnturnedVR.VR
         /// <summary>The quad showing the UI (unit quad scaled to the panel size, visible from -Z), or null before it exists.</summary>
         public static Transform PanelTransform { get; private set; }
 
+        /// <summary>The camera that renders the Glazier canvas into the UI texture, or null before it exists.</summary>
+        public static Camera UiCamera { get; private set; }
+
         private Canvas canvas;
         private Camera uiCamera;
         private RenderTexture uiTexture;
@@ -232,6 +235,7 @@ namespace UnturnedVR.VR
             uiCamera.depth = -100f;
             uiCamera.stereoTargetEye = StereoTargetEyeMask.None;
             uiCamera.targetTexture = uiTexture;
+            UiCamera = uiCamera;
 
             canvas = found;
             canvas.renderMode = RenderMode.ScreenSpaceCamera;

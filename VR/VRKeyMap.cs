@@ -21,6 +21,7 @@ namespace UnturnedVR.VR
             public VRButton Button;
             public Func<KeyCode> Key;
             public bool AllowInUi;
+            public bool UiOnly;
 
             public bool Held;
             public bool Down;
@@ -31,13 +32,15 @@ namespace UnturnedVR.VR
         // Layout for Valve Index (see docs/progress.md). Hotbar flick on the right stick is phase 2.
         private static readonly Entry[] entries =
         {
-            new Entry { Right = true,  Button = VRButton.Trigger,    Key = () => ControlsSettings.primary },
-            new Entry { Right = false, Button = VRButton.Trigger,    Key = () => ControlsSettings.secondary },
+            new Entry { Right = false, Button = VRButton.Trigger,    Key = () => ControlsSettings.primary },
+            new Entry { Right = true,  Button = VRButton.Trigger,    Key = () => ControlsSettings.secondary },
             new Entry { Right = true,  Button = VRButton.Grip,       Key = () => ControlsSettings.interact },
             new Entry { Right = false, Button = VRButton.Grip,       Key = () => ControlsSettings.firemode },
             new Entry { Right = true,  Button = VRButton.A,          Key = () => ControlsSettings.jump },
             new Entry { Right = true,  Button = VRButton.B,          Key = () => ControlsSettings.reload },
             new Entry { Right = false, Button = VRButton.A,          Key = () => ControlsSettings.crouch },
+            // Menus only: the game's "other" modifier, e.g. right-click on an inventory item = quick equip/dequip/move.
+            new Entry { Right = false, Button = VRButton.Grip,       Key = () => ControlsSettings.other, AllowInUi = true, UiOnly = true },
             new Entry { Right = false, Button = VRButton.B,          Key = () => KeyCode.Escape, AllowInUi = true },
             new Entry { Right = false, Button = VRButton.StickClick, Key = () => ControlsSettings.sprint },
             new Entry { Right = true,  Button = VRButton.StickClick, Key = () => ControlsSettings.inventory, AllowInUi = true },
@@ -89,7 +92,7 @@ namespace UnturnedVR.VR
             foreach (Entry e in entries)
             {
                 VRButton mask = e.Right ? VRControllerInput.RightButtons : VRControllerInput.LeftButtons;
-                bool raw = (mask & e.Button) != 0;
+                bool raw = (mask & e.Button) != 0 && (!e.UiOnly || uiOpen);
 
                 if (!raw)
                 {

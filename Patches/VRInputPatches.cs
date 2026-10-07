@@ -16,6 +16,7 @@ namespace UnturnedVR.Patches
     internal static class VRInputPatches
     {
         private static bool loggedPosition;
+        private static bool loggedRightButton;
         private static bool loggedButton;
         private static bool loggedScroll;
         private static bool loggedKey;
@@ -136,18 +137,23 @@ namespace UnturnedVR.Patches
 
         private static void GetMouseButtonPostfix(int button, ref bool __result)
         {
-            if (VR.VRPointer.Active && button == 0)
+            if (VR.VRPointer.Active && button <= 1)
             {
-                __result = VR.VRPointer.ButtonHeld;
+                __result = button == 0 ? VR.VRPointer.ButtonHeld : VR.VRPointer.RightButtonHeld;
             }
         }
 
         private static void GetMouseButtonDownPostfix(int button, ref bool __result)
         {
-            if (VR.VRPointer.Active && button == 0)
+            if (VR.VRPointer.Active && button <= 1)
             {
-                __result = VR.VRPointer.ButtonDown;
-                if (__result && !loggedButton)
+                __result = button == 0 ? VR.VRPointer.ButtonDown : VR.VRPointer.RightButtonDown;
+                if (button == 1 && __result && !loggedRightButton)
+                {
+                    loggedRightButton = true;
+                    VRLog.Info("BaseInput.GetMouseButtonDown(1) is being served by the VR pointer (right click).");
+                }
+                if (button == 0 && __result && !loggedButton)
                 {
                     loggedButton = true;
                     VRLog.Info("BaseInput.GetMouseButtonDown(0) is being served by the VR pointer.");
@@ -157,9 +163,9 @@ namespace UnturnedVR.Patches
 
         private static void GetMouseButtonUpPostfix(int button, ref bool __result)
         {
-            if (VR.VRPointer.Active && button == 0)
+            if (VR.VRPointer.Active && button <= 1)
             {
-                __result = VR.VRPointer.ButtonUp;
+                __result = button == 0 ? VR.VRPointer.ButtonUp : VR.VRPointer.RightButtonUp;
             }
         }
     }

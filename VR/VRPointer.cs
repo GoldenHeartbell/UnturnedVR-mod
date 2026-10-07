@@ -29,13 +29,57 @@ namespace UnturnedVR.VR
         public static bool ButtonHeld { get; private set; }
         public static bool ButtonDown { get; private set; }
         public static bool ButtonUp { get; private set; }
+        /// <summary>Right mouse button = right controller A.</summary>
+        public static bool RightButtonHeld { get; private set; }
+        public static bool RightButtonDown { get; private set; }
+        public static bool RightButtonUp { get; private set; }
         public static Vector2 ScrollDelta { get; private set; }
 
+        /// <summary>
+        /// A physical button turned into a mouse click: down on the press frame, up on the next, both at the
+        /// position where the press started. Unity only clicks when press and release hit the same element,
+        /// and pulling a trigger or pressing A moves the ray.
+        /// </summary>
+        private struct Tap
+        {
+            private bool wasHeld;
+            private int phase; // 0 idle, 1 = press this frame, 2 = release this frame
+            private Vector3 position;
+
+            public bool Down => phase == 1;
+            public bool Up => phase == 2;
+
+            /// <summary>Returns the mouse position to report: the latched one while a click is being delivered.</summary>
+            public Vector3 Update(bool held, Vector3 live)
+            {
+                if (held && !wasHeld)
+                {
+                    phase = 1;
+                    position = live;
+                }
+                wasHeld = held;
+                Vector3 result = phase != 0 ? position : live;
+                return result;
+            }
+
+            /// <summary>Call after the frame's values were read.</summary>
+            public void Advance()
+            {
+                phase = phase == 1 ? 2 : 0;
+            }
+
+            public void Reset(bool held)
+            {
+                wasHeld = held; // a button already held when a UI opens must not count as a click
+                phase = 0;
+            }
+        }
+
         private LineRenderer laser;
-        private bool prevHeld;
         private bool loggedActive;
         private bool loggedHit;
-        private bool loggedPress;
+        private Tap leftTap;
+        private Tap rightTap;
 
         public static void Create()
         {
@@ -48,21 +92,20 @@ namespace UnturnedVR.VR
         {
             if (!VRState.IsActive)
             {
-                Deactivate(false);
+                Deactivate(false, false);
                 return;
             }
 
             VRControllerInput.Refresh();
             bool held = VRControllerInput.RightTrigger;
-            bool wasHeld = prevHeld;
-            prevHeld = held;
+            bool rightHeld = (VRControllerInput.RightButtons & VRButton.A) != 0;
 
             Transform rig = VRRig.RigTransform;
             Transform panel = VRGui.PanelTransform;
             if (!UiWantsCursor() || !VRControllerInput.RightPoseValid || rig == null
                 || panel == null || !panel.gameObject.activeInHierarchy)
             {
-                Deactivate(held);
+                Deactivate(held, rightHeld);
                 return;
             }
 
@@ -73,10 +116,21 @@ namespace UnturnedVR.VR
             bool hit = TryHitPanel(panel, origin, direction, out Vector3 hitPoint, out Vector2 pixel);
 
             Active = true;
-            MousePosition = hit ? new Vector3(pixel.x, pixel.y, 0f) : new Vector3(OffPanel, OffPanel, 0f);
-            ButtonHeld = held;
-            ButtonDown = held && !wasHeld;
-            ButtonUp = !held && wasHeld;
+            Vector3 livePosition = hit ? new Vector3(pixel.x, pixel.y, 0f) : new Vector3(OffPanel, OffPanel, 0f);
+            // Trigger = left click, A = right click (item context actions: equip, drop, salvage, ...).
+            // The left tap owns the reported position, the right tap only overrides it during its own click.
+            MousePosition = leftTap.Update(held, livePosition);
+            Vector3 rightPosition = rightTap.Update(rightHeld, livePosition);
+            if (rightTap.Down || rightTap.Up)
+            {
+                MousePosition = rightPosition;
+            }
+            ButtonHeld = ButtonDown = leftTap.Down;
+            ButtonUp = leftTap.Up;
+            RightButtonHeld = RightButtonDown = rightTap.Down;
+            RightButtonUp = rightTap.Up;
+            leftTap.Advance();
+            rightTap.Advance();
             ScrollDelta = new Vector2(0f, VRControllerInput.RightStick.y * ScrollPerSecond * Time.unscaledDeltaTime);
 
             UpdateLaser(origin, hit ? hitPoint : origin + direction * LaserLength, hit);
@@ -90,11 +144,6 @@ namespace UnturnedVR.VR
             {
                 loggedHit = true;
                 VRLog.Info("first pointer hit at pixel " + pixel + " of " + Screen.width + "x" + Screen.height + ".");
-            }
-            if (ButtonDown && !loggedPress)
-            {
-                loggedPress = true;
-                VRLog.Info("first trigger press (hit=" + hit + ", pixel=" + MousePosition + ").");
             }
         }
 
@@ -136,9 +185,11 @@ namespace UnturnedVR.VR
             return true;
         }
 
-        private void Deactivate(bool triggerHeld)
+        private void Deactivate(bool triggerHeld, bool rightHeld)
         {
-            prevHeld = triggerHeld; // a trigger already held when a UI opens must not count as a click
+            leftTap.Reset(triggerHeld);
+            rightTap.Reset(rightHeld);
+            HideLaser(); // every inactive frame, not just on the transition, so it can never stay behind in the world
             if (!Active)
             {
                 return;
@@ -148,12 +199,24 @@ namespace UnturnedVR.VR
             ButtonHeld = false;
             ButtonDown = false;
             ButtonUp = false;
+            RightButtonHeld = false;
+            RightButtonDown = false;
+            RightButtonUp = false;
             ScrollDelta = Vector2.zero;
             MousePosition = new Vector3(OffPanel, OffPanel, 0f);
-            if (laser != null)
+        }
+
+        private void HideLaser()
+        {
+            if (laser != null && laser.enabled)
             {
                 laser.enabled = false;
             }
+        }
+
+        private void OnDisable()
+        {
+            HideLaser();
         }
 
         private void UpdateLaser(Vector3 from, Vector3 to, bool hit)
