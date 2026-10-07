@@ -12,12 +12,12 @@ namespace UnturnedVR
 
         public void initialize()
         {
-            UnturnedLog.info("[UnturnedVR] M1 hello-world module initializing...");
+            VRLog.Info("M1 hello-world module initializing...");
 
             harmony = new Harmony(HarmonyId);
             harmony.PatchAll(typeof(UnturnedVRModule).Assembly);
 
-            UnturnedLog.info("[UnturnedVR] M1 hello-world module initialized.");
+            VRLog.Info("M1 hello-world module initialized.");
 
             VR.VRManager.InitializeAndStart();
 
@@ -30,7 +30,7 @@ namespace UnturnedVR
         public void shutdown()
         {
             harmony?.UnpatchAll(HarmonyId);
-            UnturnedLog.info("[UnturnedVR] M1 hello-world module shut down.");
+            VRLog.Info("M1 hello-world module shut down.");
         }
     }
 }
