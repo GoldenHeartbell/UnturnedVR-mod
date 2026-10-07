@@ -33,6 +33,7 @@ namespace UnturnedVR.VR
 
         private const float TriggerPressAxis = 0.75f;
         private const float GripPressAxis = 0.75f;
+        private const float StickClickMaxDeflection = 0.7f;
 
         private static VRButton prevLeftButtons;
         private static VRButton prevRightButtons;
@@ -67,6 +68,11 @@ namespace UnturnedVR.VR
                 source = "OpenVR";
             }
 
+            // SteamVR Input (our own bindings) wins per action when it has an active binding for the controller.
+            VRSteamInput.Update();
+            if (VRSteamInput.TryGetVector2("l_stick", out Vector2 actionLeft)) { left = actionLeft; leftOk = true; source = "SteamVR Input"; }
+            if (VRSteamInput.TryGetVector2("r_stick", out Vector2 actionRight)) { right = actionRight; rightOk = true; source = "SteamVR Input"; }
+
             LeftStick = leftOk ? ApplyDeadzone(left) : Vector2.zero;
             RightStick = rightOk ? ApplyDeadzone(right) : Vector2.zero;
             LogStick("L", LeftStick, ref prevLeftStickActive);
@@ -80,13 +86,36 @@ namespace UnturnedVR.VR
 
             RefreshRightPointer();
 
-            LeftButtons = ReadButtons(InputDeviceCharacteristics.Left, ETrackedControllerRole.LeftHand, "L", ref prevLeftRaw);
-            RightButtons = ReadButtons(InputDeviceCharacteristics.Right, ETrackedControllerRole.RightHand, "R", ref prevRightRaw);
+            LeftButtons = ApplyActions("l", ReadButtons(InputDeviceCharacteristics.Left, ETrackedControllerRole.LeftHand, "L", ref prevLeftRaw));
+            RightButtons = ApplyActions("r", ReadButtons(InputDeviceCharacteristics.Right, ETrackedControllerRole.RightHand, "R", ref prevRightRaw));
+            if (RightPoseValid && VRSteamInput.TryGetBool("r_trigger", out bool actionTrigger))
+            {
+                RightTrigger = actionTrigger;
+            }
             if (VRDebugFlags.LogButtons)
             {
                 LogButtonChange("L", LeftButtons, ref prevLeftButtons);
                 LogButtonChange("R", RightButtons, ref prevRightButtons);
             }
+        }
+
+        // Overrides each button with its SteamVR Input action when that action has an active binding.
+        private static VRButton ApplyActions(string hand, VRButton mask)
+        {
+            mask = ApplyAction(hand, "trigger", VRButton.Trigger, mask);
+            mask = ApplyAction(hand, "grip", VRButton.Grip, mask);
+            mask = ApplyAction(hand, "a", VRButton.A, mask);
+            mask = ApplyAction(hand, "b", VRButton.B, mask);
+            return ApplyAction(hand, "stickclick", VRButton.StickClick, mask);
+        }
+
+        private static VRButton ApplyAction(string hand, string name, VRButton button, VRButton mask)
+        {
+            if (!VRSteamInput.TryGetBool(hand + "_" + name, out bool state))
+            {
+                return mask;
+            }
+            return state ? mask | button : mask & ~button;
         }
 
         // Button roles of one controller: Unity XR features first, then the legacy OpenVR button bits.
@@ -157,7 +186,10 @@ namespace UnturnedVR.VR
             if ((pressed & (1UL << (int)EVRButtonId.k_EButton_SteamVR_Trigger)) != 0 || state.rAxis1.x > TriggerPressAxis) mask |= VRButton.Trigger;
             if ((pressed & (1UL << (int)EVRButtonId.k_EButton_A)) != 0) mask |= VRButton.A;
             if ((pressed & (1UL << (int)EVRButtonId.k_EButton_ApplicationMenu)) != 0) mask |= VRButton.B;
-            if ((pressed & (1UL << (int)EVRButtonId.k_EButton_SteamVR_Touchpad)) != 0) mask |= VRButton.StickClick;
+            // The legacy Index binding emulates a touchpad click when the stick is pushed to its rim, so a click only
+            // counts while the stick is away from the edge (a real click with the stick fully pushed is lost).
+            float stickMagnitude = new Vector2(state.rAxis0.x, state.rAxis0.y).magnitude;
+            if ((pressed & (1UL << (int)EVRButtonId.k_EButton_SteamVR_Touchpad)) != 0 && stickMagnitude < StickClickMaxDeflection) mask |= VRButton.StickClick;
             if (state.rAxis2.x > GripPressAxis) mask |= VRButton.Grip;
             return mask;
         }

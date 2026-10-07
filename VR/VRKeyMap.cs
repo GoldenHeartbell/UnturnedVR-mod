@@ -28,7 +28,7 @@ namespace UnturnedVR.VR
             public bool Latched;
         }
 
-        // Layout for Valve Index (see docs/progress.md). Hotbar flick on the left stick is phase 2.
+        // Layout for Valve Index (see docs/progress.md). Hotbar flick on the right stick is phase 2.
         private static readonly Entry[] entries =
         {
             new Entry { Right = true,  Button = VRButton.Trigger,    Key = () => ControlsSettings.primary },
@@ -39,8 +39,8 @@ namespace UnturnedVR.VR
             new Entry { Right = true,  Button = VRButton.B,          Key = () => ControlsSettings.reload },
             new Entry { Right = false, Button = VRButton.A,          Key = () => ControlsSettings.crouch },
             new Entry { Right = false, Button = VRButton.B,          Key = () => KeyCode.Escape, AllowInUi = true },
-            new Entry { Right = true,  Button = VRButton.StickClick, Key = () => ControlsSettings.sprint },
-            new Entry { Right = false, Button = VRButton.StickClick, Key = () => ControlsSettings.inventory, AllowInUi = true },
+            new Entry { Right = false, Button = VRButton.StickClick, Key = () => ControlsSettings.sprint },
+            new Entry { Right = true,  Button = VRButton.StickClick, Key = () => ControlsSettings.inventory, AllowInUi = true },
         };
 
         private static int lastFrame = -1;

@@ -29,7 +29,7 @@ namespace UnturnedVR.Patches
             }
 
             VR.VRControllerInput.Refresh();
-            Vector2 stick = VR.VRControllerInput.RightStick;
+            Vector2 stick = VR.VRControllerInput.LeftStick;
             if (stick == Vector2.zero)
             {
                 return;

@@ -33,12 +33,12 @@ namespace UnturnedVR.Patches
 
             ____yaw += VR.VRRig.ConsumeHeadYawDelta(bodyFollowsHead);
 
-            // M5: left stick X = smooth turn. Rotates the body (and the rig parented to it) without
+            // M5: right stick X = smooth turn. Rotates the body (and the rig parented to it) without
             // touching the head-delta bookkeeping above. Up/down is deliberately ignored.
             if (bodyFollowsHead && !PlayerUI.window.showCursor && !LoadingUI.isBlocked)
             {
                 VR.VRControllerInput.Refresh();
-                ____yaw += VR.VRControllerInput.LeftStick.x * SmoothTurnSpeed * Time.deltaTime;
+                ____yaw += VR.VRControllerInput.RightStick.x * SmoothTurnSpeed * Time.deltaTime;
             }
         }
     }
