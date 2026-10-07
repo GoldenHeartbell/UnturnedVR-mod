@@ -12,25 +12,27 @@ namespace UnturnedVR
 
         public void initialize()
         {
-            VRLog.Info("M1 hello-world module initializing...");
+            VRLog.Info("UnturnedVR " + typeof(UnturnedVRModule).Assembly.GetName().Version.ToString(3) + " initializing...");
 
             harmony = new Harmony(HarmonyId);
             harmony.PatchAll(typeof(UnturnedVRModule).Assembly);
+            Patches.VRInputPatches.Apply(harmony);
 
-            VRLog.Info("M1 hello-world module initialized.");
+            VRLog.Info("UnturnedVR initialized.");
 
             VR.VRManager.InitializeAndStart();
 
             if (VR.VRState.IsActive)
             {
                 VR.VRGui.Create();
+                VR.VRPointer.Create();
             }
         }
 
         public void shutdown()
         {
             harmony?.UnpatchAll(HarmonyId);
-            VRLog.Info("M1 hello-world module shut down.");
+            VRLog.Info("UnturnedVR shut down.");
         }
     }
 }

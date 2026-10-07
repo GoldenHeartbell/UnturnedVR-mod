@@ -33,6 +33,9 @@ namespace UnturnedVR.VR
 
         public static bool HasHeadPose => rigHeight != null && rigHeight.HasPose;
 
+        /// <summary>Rig root: tracking-space poses (head, controllers) are local to it. Null before the rig exists.</summary>
+        public static Transform RigTransform => rigObject != null ? rigObject.transform : null;
+
         /// <summary>The VR camera while the rig exists and is live, otherwise null (menu, loading).</summary>
         public static Camera ActiveCamera => hmdCamera != null && hmdCamera.isActiveAndEnabled ? hmdCamera : null;
         private static bool hasLastHeadYaw;

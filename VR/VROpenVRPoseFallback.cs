@@ -84,21 +84,30 @@ namespace UnturnedVR.VR
                 return;
             }
 
-            // Same conversion as SteamVR_Utils.RigidTransform (OpenVR right-handed -> Unity left-handed).
-            HmdMatrix34_t p = pose.mDeviceToAbsoluteTracking;
-            Matrix4x4 m = Matrix4x4.identity;
-            m[0, 0] = p.m0; m[0, 1] = p.m1; m[0, 2] = -p.m2; m[0, 3] = p.m3;
-            m[1, 0] = p.m4; m[1, 1] = p.m5; m[1, 2] = -p.m6; m[1, 3] = p.m7;
-            m[2, 0] = -p.m8; m[2, 1] = -p.m9; m[2, 2] = p.m10; m[2, 3] = -p.m11;
-
-            transform.localPosition = new Vector3(m[0, 3], m[1, 3], m[2, 3]);
-            transform.localRotation = Quaternion.LookRotation(m.GetColumn(2), m.GetColumn(1));
+            ConvertPose(pose.mDeviceToAbsoluteTracking, out Vector3 position, out Quaternion rotation);
+            transform.localPosition = position;
+            transform.localRotation = rotation;
 
             if (!loggedFirstPose)
             {
                 loggedFirstPose = true;
                 VRLog.Info("using direct OpenVR HMD pose (XR input has no head device).");
             }
+        }
+
+        /// <summary>
+        /// Same conversion as SteamVR_Utils.RigidTransform (OpenVR right-handed -> Unity left-handed).
+        /// The result is in tracking space, i.e. local to the rig root.
+        /// </summary>
+        public static void ConvertPose(HmdMatrix34_t p, out Vector3 position, out Quaternion rotation)
+        {
+            Matrix4x4 m = Matrix4x4.identity;
+            m[0, 0] = p.m0; m[0, 1] = p.m1; m[0, 2] = -p.m2; m[0, 3] = p.m3;
+            m[1, 0] = p.m4; m[1, 1] = p.m5; m[1, 2] = -p.m6; m[1, 3] = p.m7;
+            m[2, 0] = -p.m8; m[2, 1] = -p.m9; m[2, 2] = p.m10; m[2, 3] = -p.m11;
+
+            position = new Vector3(m[0, 3], m[1, 3], m[2, 3]);
+            rotation = Quaternion.LookRotation(m.GetColumn(2), m.GetColumn(1));
         }
     }
 }

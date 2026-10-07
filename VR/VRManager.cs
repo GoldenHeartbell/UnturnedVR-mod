@@ -110,9 +110,33 @@ namespace UnturnedVR.VR
             VRState.IsActive = true;
         }
 
+        // The release ships "xrmanager" next to the module's DLLs, so installing is a single folder copy.
+        // Older installs (and the editor) have it in StreamingAssets, which stays as the fallback.
+        private static string FindXRManagerBundle()
+        {
+            try
+            {
+                string moduleDirectory = Path.GetDirectoryName(typeof(VRManager).Assembly.Location);
+                if (!string.IsNullOrEmpty(moduleDirectory))
+                {
+                    string beside = Path.Combine(moduleDirectory, "xrmanager");
+                    if (File.Exists(beside))
+                    {
+                        return beside;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                VRLog.Warn("could not look for xrmanager beside the module: " + ex.Message);
+            }
+
+            return Path.Combine(Application.streamingAssetsPath, "xrmanager");
+        }
+
         private static XRGeneralSettings LoadXRGeneralSettingsFromBundle()
         {
-            string bundlePath = Path.Combine(Application.streamingAssetsPath, "xrmanager");
+            string bundlePath = FindXRManagerBundle();
             VRLog.Info($"loading AssetBundle at \"{bundlePath}\"");
 
             AssetBundle bundle;

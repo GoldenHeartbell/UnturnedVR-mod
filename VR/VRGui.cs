@@ -31,6 +31,9 @@ namespace UnturnedVR.VR
         /// <summary>Layer the GUI panel lives on, or -1 before it is chosen.</summary>
         public static int PanelLayer { get; private set; } = -1;
 
+        /// <summary>The quad showing the UI (unit quad scaled to the panel size, visible from -Z), or null before it exists.</summary>
+        public static Transform PanelTransform { get; private set; }
+
         private Canvas canvas;
         private Camera uiCamera;
         private RenderTexture uiTexture;
@@ -303,6 +306,7 @@ namespace UnturnedVR.VR
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
             panel = go.transform;
+            PanelTransform = panel;
             ResizePanel();
         }
 
