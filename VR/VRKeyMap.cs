@@ -40,7 +40,7 @@ namespace UnturnedVR.VR
             new Entry { Right = true,  Button = VRButton.B,          Key = () => ControlsSettings.reload },
             new Entry { Right = false, Button = VRButton.A,          Key = () => ControlsSettings.crouch },
             // Menus only: the game's "other" modifier, e.g. right-click on an inventory item = quick equip/dequip/move.
-            new Entry { Right = false, Button = VRButton.Grip,       Key = () => ControlsSettings.other, AllowInUi = true, UiOnly = true },
+            new Entry { Right = true,  Button = VRButton.Grip,       Key = () => ControlsSettings.other, AllowInUi = true, UiOnly = true },
             new Entry { Right = false, Button = VRButton.B,          Key = () => KeyCode.Escape, AllowInUi = true },
             new Entry { Right = false, Button = VRButton.StickClick, Key = () => ControlsSettings.sprint },
             new Entry { Right = true,  Button = VRButton.StickClick, Key = () => ControlsSettings.inventory, AllowInUi = true },

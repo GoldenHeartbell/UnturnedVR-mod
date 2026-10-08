@@ -27,6 +27,10 @@ namespace UnturnedVR.VR
         private const float FollowDeadzoneDegrees = 35f;
         private const float FollowSharpness = 3f;
         private const KeyCode RecenterKey = KeyCode.F10;
+        // The pickup label panel, head-locked in front of the eyes. Guesses to tune in-headset.
+        private const float HintDistance = 1.0f;
+        private const float HintHeight = -0.12f;
+        private const float HintScale = 1.5f;
 
         /// <summary>Layer the GUI panel lives on, or -1 before it is chosen.</summary>
         public static int PanelLayer { get; private set; } = -1;
@@ -37,8 +41,29 @@ namespace UnturnedVR.VR
         /// <summary>The camera that renders the Glazier canvas into the UI texture, or null before it exists.</summary>
         public static Camera UiCamera { get; private set; }
 
+        /// <summary>Size of the Glazier canvas in its own units (what the widgets' offsets are measured in).</summary>
+        public static Vector2 CanvasSize { get; private set; } = new Vector2(1920f, 1080f);
+
+        private static Rect hintRect;
+        private static bool hintRectValid;
+
+        /// <summary>Where the pickup label sits in the canvas (units, origin top left). Set by PlayerUIHintPatch.</summary>
+        public static void SetHintRect(Rect rect)
+        {
+            hintRect = rect;
+            hintRectValid = true;
+        }
+
         private Canvas canvas;
         private Camera uiCamera;
+        private MeshFilter panelFilter;
+        private Mesh quadMesh;
+        private Mesh holeMesh;
+        private Transform hintPanel;
+        private Mesh hintMesh;
+        private bool hintShown;
+        private Rect hintShownRect;
+        private bool loggedHint;
         private RenderTexture uiTexture;
         private Camera overlayCamera;
         private Transform panel;
@@ -95,6 +120,7 @@ namespace UnturnedVR.VR
             {
                 RecreateTexture();
             }
+            CanvasSize = ((RectTransform)canvas.transform).rect.size;
 
             Camera eye = PickEyeCamera();
             LogDiagnostics(eye);
@@ -120,6 +146,7 @@ namespace UnturnedVR.VR
                 }
                 SetPanelVisible(true);
                 PlacePanel(overlayCamera.transform);
+                UpdateHint(null);
                 return;
             }
 
@@ -148,6 +175,102 @@ namespace UnturnedVR.VR
 
             SetPanelVisible(true);
             PlacePanel(eye.transform);
+            UpdateHint(eye.transform);
+        }
+
+        /// <summary>
+        /// Shows the pickup label on the near panel and cuts its spot out of the HUD panel, only in the
+        /// in-game HUD layout and only while the game's hint box is visible. Otherwise the HUD panel is whole.
+        /// </summary>
+        private void UpdateHint(Transform eye)
+        {
+            bool show = eye != null && hintRectValid && !menuLayout
+                && PlayerUI.messageBox != null && PlayerUI.messageBox.IsVisible;
+
+            if (show != hintShown || (show && hintRect != hintShownRect))
+            {
+                hintShown = show;
+                if (show)
+                {
+                    hintShownRect = hintRect;
+                    ApplyHintGeometry(hintRect);
+                    if (!loggedHint)
+                    {
+                        loggedHint = true;
+                        VRLog.Info("pickup label panel: rect " + hintRect + " in canvas " + CanvasSize + ".");
+                    }
+                }
+                else
+                {
+                    panelFilter.sharedMesh = quadMesh;
+                }
+            }
+
+            if (hintPanel.gameObject.activeSelf != show)
+            {
+                hintPanel.gameObject.SetActive(show);
+            }
+            if (show)
+            {
+                hintPanel.position = eye.TransformPoint(0f, HintHeight, HintDistance);
+                hintPanel.rotation = eye.rotation;
+            }
+        }
+
+        private void ApplyHintGeometry(Rect rect)
+        {
+            Vector2 canvasSize = CanvasSize;
+            float u0 = Mathf.Clamp01(rect.xMin / canvasSize.x);
+            float u1 = Mathf.Clamp01(rect.xMax / canvasSize.x);
+            float v1 = Mathf.Clamp01(1f - rect.yMin / canvasSize.y);
+            float v0 = Mathf.Clamp01(1f - rect.yMax / canvasSize.y);
+
+            // HUD panel: the whole texture except the label's rectangle.
+            var vertices = new System.Collections.Generic.List<Vector3>(16);
+            var uvs = new System.Collections.Generic.List<Vector2>(16);
+            var triangles = new System.Collections.Generic.List<int>(24);
+            AddRect(vertices, uvs, triangles, 0f, 0f, 1f, v0);
+            AddRect(vertices, uvs, triangles, 0f, v1, 1f, 1f);
+            AddRect(vertices, uvs, triangles, 0f, v0, u0, v1);
+            AddRect(vertices, uvs, triangles, u1, v0, 1f, v1);
+            holeMesh.Clear();
+            holeMesh.SetVertices(vertices);
+            holeMesh.SetUVs(0, uvs);
+            holeMesh.SetTriangles(triangles, 0);
+            holeMesh.RecalculateNormals();
+            holeMesh.RecalculateBounds();
+            panelFilter.sharedMesh = holeMesh;
+
+            // Near panel: only the label's rectangle, sized to look like the HUD scaled down to HintDistance.
+            hintMesh.uv = new[] { new Vector2(u0, v0), new Vector2(u1, v0), new Vector2(u0, v1), new Vector2(u1, v1) };
+            float aspect = (float)uiTexture.width / uiTexture.height;
+            float scale = PanelWidth * (HintDistance / PanelDistance) * HintScale;
+            hintPanel.localScale = new Vector3(
+                (u1 - u0) * scale,
+                (v1 - v0) * scale / aspect,
+                1f);
+        }
+
+        // Adds the rectangle (u0,v0)-(u1,v1) of the unit quad, UVs equal to the position in the texture.
+        private static void AddRect(System.Collections.Generic.List<Vector3> vertices, System.Collections.Generic.List<Vector2> uvs,
+            System.Collections.Generic.List<int> triangles, float u0, float v0, float u1, float v1)
+        {
+            if (u1 <= u0 || v1 <= v0)
+            {
+                return;
+            }
+
+            int start = vertices.Count;
+            vertices.Add(new Vector3(u0 - 0.5f, v0 - 0.5f, 0f));
+            vertices.Add(new Vector3(u1 - 0.5f, v0 - 0.5f, 0f));
+            vertices.Add(new Vector3(u0 - 0.5f, v1 - 0.5f, 0f));
+            vertices.Add(new Vector3(u1 - 0.5f, v1 - 0.5f, 0f));
+            uvs.Add(new Vector2(u0, v0));
+            uvs.Add(new Vector2(u1, v0));
+            uvs.Add(new Vector2(u0, v1));
+            uvs.Add(new Vector2(u1, v1));
+            triangles.Add(start); triangles.Add(start + 2); triangles.Add(start + 1);
+            triangles.Add(start + 2); triangles.Add(start + 3); triangles.Add(start + 1);
         }
 
         // Temporary: we cannot see the headset, so report what the pipeline is doing every few seconds.
@@ -304,7 +427,10 @@ namespace UnturnedVR.VR
             GameObject go = new GameObject("UnturnedVR GUI Panel");
             go.layer = panelLayer;
             go.transform.SetParent(transform, worldPositionStays: false);
-            go.AddComponent<MeshFilter>().sharedMesh = BuildQuad();
+            quadMesh = BuildQuad();
+            holeMesh = new Mesh { name = "UnturnedVR GUI Quad With Hint Hole" };
+            panelFilter = go.AddComponent<MeshFilter>();
+            panelFilter.sharedMesh = quadMesh;
             MeshRenderer renderer = go.AddComponent<MeshRenderer>();
             renderer.sharedMaterial = panelMaterial;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -312,6 +438,19 @@ namespace UnturnedVR.VR
             panel = go.transform;
             PanelTransform = panel;
             ResizePanel();
+
+            // Pickup label panel: same texture and layer, cropped to the label, hidden until needed.
+            GameObject hint = new GameObject("UnturnedVR GUI Hint Panel");
+            hint.layer = panelLayer;
+            hint.transform.SetParent(transform, worldPositionStays: false);
+            hintMesh = BuildQuad();
+            hint.AddComponent<MeshFilter>().sharedMesh = hintMesh;
+            MeshRenderer hintRenderer = hint.AddComponent<MeshRenderer>();
+            hintRenderer.sharedMaterial = panelMaterial;
+            hintRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            hintRenderer.receiveShadows = false;
+            hintPanel = hint.transform;
+            hint.SetActive(false);
         }
 
         private void ResizePanel()
