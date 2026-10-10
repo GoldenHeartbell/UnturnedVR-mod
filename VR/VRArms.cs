@@ -99,7 +99,7 @@ namespace UnturnedVR.VR
         private bool swapped;
         private bool resolved;
         private bool itemCalibrated;
-        private const float SupportHandSideShift = 0.04f; // second hand sits this far to its own side of the grip point (m)
+        private const float SupportHandSideShift = 0f; // second hand sits this far to its own side of the grip point (m)
         private const float SupportHandRoll = 90f;          // forearm twist of the second hand (degrees, sign by side)
         private const float TwoHandMinSpan = 0.08f;  // hands closer than this: no two-hand aim (m)
         private const float TwoHandFullSpan = 0.18f; // from here on the barrel points fully at the other hand
@@ -307,6 +307,12 @@ namespace UnturnedVR.VR
             DriveArm(left, swapped ? VRHands.Right : VRHands.Left, yaw, swapped ? 1f : -1f);
             DriveArm(right, swapped ? VRHands.Left : VRHands.Right, yaw, swapped ? -1f : 1f);
             DriveItem(yaw);
+            if (allowCalibrate)
+            {
+                VRAds.Update(); // once per frame, with the gun and the eye in their final pose
+            }
+            VRAds.PlaceScopeCamera();
+            VRAttachMenu.CachePanelPose(head.position); // the gun is in its final place now
 
             if (!loggedFirstApply)
             {

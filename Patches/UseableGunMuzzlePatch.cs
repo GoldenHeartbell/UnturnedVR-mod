@@ -35,6 +35,8 @@ namespace UnturnedVR.Patches
                 return;
             }
 
+            VR.VRShotProbe.Log(__instance, position, rotation); // diagnostic, off unless VRDebugFlags.LogShotOffset
+
             __state.Swapped = true;
             __state.Position = aim.position;
             __state.Rotation = aim.rotation;

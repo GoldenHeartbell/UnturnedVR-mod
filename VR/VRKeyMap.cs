@@ -53,6 +53,7 @@ namespace UnturnedVR.VR
         public static bool GetKey(KeyCode key)
         {
             Refresh();
+            if (VRAttachMenu.Wanted && key == ControlsSettings.attach) return true;
             foreach (Entry e in entries)
             {
                 if (e.Held && e.Key() == key) return true;
@@ -63,6 +64,7 @@ namespace UnturnedVR.VR
         public static bool GetKeyDown(KeyCode key)
         {
             Refresh();
+            if (VRAttachMenu.KeyDown && key == ControlsSettings.attach) return true;
             foreach (Entry e in entries)
             {
                 if (e.Down && e.Key() == key) return true;
@@ -73,6 +75,7 @@ namespace UnturnedVR.VR
         public static bool GetKeyUp(KeyCode key)
         {
             Refresh();
+            if (VRAttachMenu.KeyUp && key == ControlsSettings.attach) return true;
             foreach (Entry e in entries)
             {
                 if (e.Up && e.Key() == key) return true;
@@ -95,6 +98,10 @@ namespace UnturnedVR.VR
             VRHold.Update((VRControllerInput.LeftButtons & VRButton.Grip) != 0,
                 (VRControllerInput.RightButtons & VRButton.Grip) != 0, !uiOpen);
 
+            // Long press of B on the gun hand = attachment menu; a tap is delivered on release (see VRAttachMenu).
+            VRAttachMenu.Update((VRControllerInput.LeftButtons & VRButton.B) != 0,
+                (VRControllerInput.RightButtons & VRButton.B) != 0, uiOpen);
+
             // Fire/use is on the trigger of the hand that holds the item (the trigger hand of a two-handed gun); the
             // other trigger is the secondary (aim). Nothing held: left fires. Only switched while no trigger is down.
             if (((VRControllerInput.LeftButtons | VRControllerInput.RightButtons) & VRButton.Trigger) == 0)
@@ -103,12 +110,36 @@ namespace UnturnedVR.VR
                 primaryRight = itemHand >= 0 && itemHand == VRHands.Right;
             }
 
+            // Aiming down the sights: for a gun with a sight reference the aim "key" is the sight at the eye, not the
+            // other trigger (VRAds, evaluated in VRArms once the gun is placed). The game's toggle-aim setting reacts to
+            // key presses, so there it gets one press when the sight arrives and one when it leaves.
+            bool toggleAim = ControlsSettings.aiming == EControlMode.TOGGLE;
+
             foreach (Entry e in entries)
             {
+                if (e.Role == 2 && VRAds.Applies)
+                {
+                    bool adsHeld = !toggleAim && VRAds.Active;
+                    bool adsDown = toggleAim ? VRAds.Changed : adsHeld && !e.Held;
+                    e.Down = adsDown;
+                    e.Up = !toggleAim && !adsHeld && e.Held;
+                    e.Held = adsHeld;
+                    e.Latched = false;
+                    continue;
+                }
+
                 bool right = e.Role == 0 ? e.Right : (e.Role == 1) == primaryRight;
                 VRButton mask = right ? VRControllerInput.RightButtons : VRControllerInput.LeftButtons;
                 bool raw = (mask & e.Button) != 0 && (!e.UiOnly || uiOpen)
                     && !(e.Button == VRButton.Grip && VRHold.Consumed(e.Right));
+                if (e.Button == VRButton.B && e.Role == 0)
+                {
+                    int hand = e.Right ? VRHands.Right : VRHands.Left;
+                    if (VRAttachMenu.ControlsB(hand))
+                    {
+                        raw = VRAttachMenu.ControlledBValue(hand) && (!e.UiOnly || uiOpen);
+                    }
+                }
 
                 if (!raw)
                 {
@@ -124,6 +155,7 @@ namespace UnturnedVR.VR
                 e.Up = !held && e.Held;
                 e.Held = held;
             }
+            VRAds.AcknowledgeChange();
             VRPerf.End(VRPerf.KeyMap, perfStart);
         }
     }

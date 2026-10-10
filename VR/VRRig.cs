@@ -144,6 +144,25 @@ namespace UnturnedVR.VR
             return delta;
         }
 
+        /// <summary>
+        /// The headset's pitch in the game's convention (0 = straight up, 90 = level, 180 = straight down),
+        /// measured against the world so the body yaw and the rig's counter-rotation do not matter. False until
+        /// the rig is live and has a head pose.
+        /// </summary>
+        public static bool TryGetHeadPitch(out float pitch)
+        {
+            pitch = 90f;
+            Camera eye = ActiveCamera;
+            if (eye == null || !HasHeadPose)
+            {
+                return false;
+            }
+
+            float up = Mathf.Clamp(eye.transform.forward.y, -1f, 1f);
+            pitch = 90f - Mathf.Asin(up) * Mathf.Rad2Deg;
+            return true;
+        }
+
         private static Camera EnsureRigObject()
         {
             if (rigObject != null)

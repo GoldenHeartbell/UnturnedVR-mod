@@ -46,7 +46,8 @@ namespace UnturnedVR.VR
         // Built-in per-class defaults, used when the file has no line for the class.
         private static Pose BuiltIn(string className)
         {
-            return className == "rifle" ? Make(new Vector3(0f, 0.09f, 0f), 25f) : Make(new Vector3(0f, 0.09f, 0f), 0f);
+            // Rifles: the model origin sits near the trigger guard, so push the gun forward (z) to put the hand on the rear grip.
+            return className == "rifle" ? Make(new Vector3(0f, 0.09f, 0.07f), 25f) : Make(new Vector3(0f, 0.09f, 0f), 0f);
         }
 
         private static readonly Dictionary<string, Pose> classes = new Dictionary<string, Pose>();

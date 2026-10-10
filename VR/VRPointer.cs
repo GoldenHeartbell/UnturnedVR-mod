@@ -104,23 +104,29 @@ namespace UnturnedVR.VR
             }
 
             VRControllerInput.Refresh();
-            bool held = VRControllerInput.RightTrigger;
-            bool rightHeld = (VRControllerInput.RightButtons & VRButton.A) != 0;
+            // Gun menu open: the gun's hand holds the gun, so the other hand points. Otherwise always the right one.
+            bool useLeft = VRAttachMenu.Open && VRArms.ItemHand == VRHands.Right;
+            bool held = useLeft ? (VRControllerInput.LeftButtons & VRButton.Trigger) != 0 : VRControllerInput.RightTrigger;
+            bool rightHeld = ((useLeft ? VRControllerInput.LeftButtons : VRControllerInput.RightButtons) & VRButton.A) != 0;
+            bool poseValid = useLeft ? VRControllerInput.LeftPoseValid : VRControllerInput.RightPoseValid;
+            Vector3 handPosition = useLeft ? VRControllerInput.LeftPosition : VRControllerInput.RightPosition;
+            Quaternion handRotation = useLeft ? VRControllerInput.LeftRotation : VRControllerInput.RightRotation;
+            Vector2 stick = useLeft ? VRControllerInput.LeftStick : VRControllerInput.RightStick;
 
             Transform rig = VRRig.RigTransform;
-            Transform panel = VRGui.PanelTransform;
-            if (!UiWantsCursor() || !VRControllerInput.RightPoseValid || rig == null
+            Transform panel = VRGui.PointerPanel;
+            if (!UiWantsCursor() || !poseValid || rig == null
                 || panel == null || !panel.gameObject.activeInHierarchy)
             {
                 Deactivate(held, rightHeld);
                 return;
             }
 
-            Vector3 origin = rig.TransformPoint(VRControllerInput.RightPosition);
-            Quaternion aim = rig.rotation * VRControllerInput.RightRotation * Quaternion.Euler(VRHands.GripOffsetEuler);
+            Vector3 origin = rig.TransformPoint(handPosition);
+            Quaternion aim = rig.rotation * handRotation * Quaternion.Euler(VRHands.GripOffsetEuler);
             Vector3 direction = aim * Vector3.forward;
 
-            bool hit = TryHitPanel(panel, origin, direction, out Vector3 hitPoint, out Vector2 pixel);
+            bool hit = TryHitPanel(panel, VRGui.PointerUv, origin, direction, out Vector3 hitPoint, out Vector2 pixel);
 
             Active = true;
             Vector3 livePosition = hit ? new Vector3(pixel.x, pixel.y, 0f) : new Vector3(OffPanel, OffPanel, 0f);
@@ -138,15 +144,15 @@ namespace UnturnedVR.VR
             RightButtonUp = rightTap.Up;
             leftTap.Advance();
             rightTap.Advance();
-            ScrollDelta = new Vector2(0f, VRControllerInput.RightStick.y * ScrollPerSecond * Time.unscaledDeltaTime);
+            ScrollDelta = new Vector2(0f, stick.y * ScrollPerSecond * Time.unscaledDeltaTime);
 
             UpdateLaser(origin, hit ? hitPoint : origin + direction * LaserLength, hit);
 
             if (VRDebugFlags.LogPointer && Time.unscaledTime >= nextPointerLog)
             {
                 nextPointerLog = Time.unscaledTime + 1f;
-                VRLog.Info("pointer: hit=" + hit + " mouse=" + MousePosition + " trigger=" + held + " rightA=" + rightHeld
-                    + " ctrlPos=" + VRControllerInput.RightPosition.ToString("0.00") + " panel=" + panel.position.ToString("0.00"));
+                VRLog.Info("pointer: hand=" + (useLeft ? "left" : "right") + " hit=" + hit + " mouse=" + MousePosition + " trigger=" + held + " A=" + rightHeld
+                    + " ctrlPos=" + handPosition.ToString("0.00") + " panel=" + panel.position.ToString("0.00"));
             }
 
             if (!loggedActive)
@@ -170,7 +176,8 @@ namespace UnturnedVR.VR
         // The panel is a unit quad (local -0.5..0.5) scaled to size and visible from -Z, so rays hit
         // it travelling along its +Z; local x/y + 0.5 are the texture u/v (origin bottom-left, like
         // the window's mouse coordinates).
-        private static bool TryHitPanel(Transform panel, Vector3 origin, Vector3 direction, out Vector3 point, out Vector2 pixel)
+        // uv is the part of the UI texture the panel shows (the whole texture for the main panel).
+        private static bool TryHitPanel(Transform panel, Rect uv, Vector3 origin, Vector3 direction, out Vector3 point, out Vector2 pixel)
         {
             point = origin;
             pixel = Vector2.zero;
@@ -195,7 +202,8 @@ namespace UnturnedVR.VR
                 return false;
             }
 
-            pixel = new Vector2((local.x + 0.5f) * Screen.width, (local.y + 0.5f) * Screen.height);
+            pixel = new Vector2((uv.xMin + (local.x + 0.5f) * uv.width) * Screen.width,
+                (uv.yMin + (local.y + 0.5f) * uv.height) * Screen.height);
             return true;
         }
 

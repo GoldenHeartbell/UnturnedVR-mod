@@ -24,6 +24,15 @@ namespace UnturnedVR.VR
         /// <summary>Logs the pointer state (hit, pixel, trigger) about once a second while it is active.</summary>
         public static bool LogPointer = false;
 
+        /// <summary>Logs when aiming down the sights switches on and off, with the eye-to-sight distances (VRAds).</summary>
+        public static bool LogAds = false;
+
+        /// <summary>
+        /// One line per shot: sight height over the bore, distance of the reticle point, bullet drop there, and how far
+        /// below the reticle the bullet ends up (VRShotProbe). On while the close-range offset is being measured.
+        /// </summary>
+        public static bool LogShotOffset = true;
+
         /// <summary>VRGui pipeline report every 10 s (eye, panel, overlay camera, texture coverage via ReadPixels).</summary>
         public static bool LogGui = false;
 

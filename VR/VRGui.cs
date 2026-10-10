@@ -38,20 +38,68 @@ namespace UnturnedVR.VR
         /// <summary>The quad showing the UI (unit quad scaled to the panel size, visible from -Z), or null before it exists.</summary>
         public static Transform PanelTransform { get; private set; }
 
+        /// <summary>
+        /// The panel the laser should be intersected with: the attachment menu panel on the gun while it is shown,
+        /// else the main panel.
+        /// </summary>
+        public static Transform PointerPanel => attachShown && attachPanel != null ? attachPanel : PanelTransform;
+
+        /// <summary>The part of the UI texture the pointer panel shows (u/v, origin bottom left).</summary>
+        public static Rect PointerUv => attachShown ? attachUv : new Rect(0f, 0f, 1f, 1f);
+
+        private static Transform attachPanel;
+        private static bool attachShown;
+        private static Rect attachUv = new Rect(0f, 0f, 1f, 1f);
+
         /// <summary>The camera that renders the Glazier canvas into the UI texture, or null before it exists.</summary>
         public static Camera UiCamera { get; private set; }
 
         /// <summary>Size of the Glazier canvas in its own units (what the widgets' offsets are measured in).</summary>
         public static Vector2 CanvasSize { get; private set; } = new Vector2(1920f, 1080f);
 
-        private static Rect hintRect;
-        private static bool hintRectValid;
+        // Extra canvas units around the hint boxes so their border / drop shadow is cropped and hidden too.
+        private const float HintPad = 8f;
 
-        /// <summary>Where the pickup label sits in the canvas (units, origin top left). Set by PlayerUIHintPatch.</summary>
-        public static void SetHintRect(Rect rect)
+        // The game's "looking at another player" card; private, so read by reflection (resolved once).
+        private static readonly System.Reflection.FieldInfo messagePlayerField =
+            typeof(PlayerUI).GetField("messagePlayer", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+
+        // Bounding rect (canvas units, origin top left) of every hint / message box the game currently shows:
+        // PlayerUI.messageBox (hint: pickup, climb, ...), messageBox2 (message / hint2: reload, safety, xp, ...) and the
+        // enemy player card. The game keeps them at fixed bottom-centre spots (PlayerUIHintPatch pins messageBox).
+        private static bool TryGetHintRect(out Rect rect)
         {
-            hintRect = rect;
-            hintRectValid = true;
+            rect = default;
+            bool any = false;
+            Vector2 canvasSize = CanvasSize;
+            AddHintBox(PlayerUI.messageBox, canvasSize, ref rect, ref any);
+            AddHintBox(PlayerUI.messageBox2, canvasSize, ref rect, ref any);
+            AddHintBox(messagePlayerField != null ? messagePlayerField.GetValue(null) as ISleekElement : null, canvasSize, ref rect, ref any);
+            return any;
+        }
+
+        private static void AddHintBox(ISleekElement box, Vector2 canvasSize, ref Rect rect, ref bool any)
+        {
+            if (box == null || !box.IsVisible)
+            {
+                return;
+            }
+
+            float left = box.PositionScale_X * canvasSize.x + box.PositionOffset_X;
+            float top = box.PositionScale_Y * canvasSize.y + box.PositionOffset_Y;
+            float width = box.SizeScale_X * canvasSize.x + box.SizeOffset_X;
+            float height = box.SizeScale_Y * canvasSize.y + box.SizeOffset_Y;
+            Rect boxRect = Rect.MinMaxRect(left - HintPad, top - HintPad, left + width + HintPad, top + height + HintPad);
+            if (!any)
+            {
+                rect = boxRect;
+                any = true;
+                return;
+            }
+
+            rect = Rect.MinMaxRect(
+                Mathf.Min(rect.xMin, boxRect.xMin), Mathf.Min(rect.yMin, boxRect.yMin),
+                Mathf.Max(rect.xMax, boxRect.xMax), Mathf.Max(rect.yMax, boxRect.yMax));
         }
 
         private Canvas canvas;
@@ -158,6 +206,11 @@ namespace UnturnedVR.VR
                 {
                     needsRecenter = true;
                 }
+                if (attachShown)
+                {
+                    attachShown = false; // a scene change ended the menu: the big panel must come back
+                    attachPanel.gameObject.SetActive(false);
+                }
                 SetPanelVisible(true);
                 PlacePanel(overlayCamera.transform);
                 UpdateHint(null);
@@ -191,19 +244,65 @@ namespace UnturnedVR.VR
                 needsRecenter = true;
             }
 
+            UpdateAttachPanel(eye.transform);
             SetPanelVisible(true);
             PlacePanel(eye.transform);
             UpdateHint(eye.transform);
         }
 
         /// <summary>
-        /// Shows the pickup label on the near panel and cuts its spot out of the HUD panel, only in the
-        /// in-game HUD layout and only while the game's hint box is visible. Otherwise the HUD panel is whole.
+        /// While the gun's attachment menu is open it is shown on its own small panel floating above the gun
+        /// (VRAttachMenu), cropped from the UI texture; the big panel is hidden then (the HUD is closed in that mode).
+        /// </summary>
+        private void UpdateAttachPanel(Transform eye)
+        {
+            // The pose cached by VRArms once the gun sat on the controller; reading the hooks here (before VRArms in the
+            // frame) would give the game's head-relative animated hold.
+            bool show = VRAttachMenu.Open && VRAttachMenu.CachedValid;
+            Vector3 position = VRAttachMenu.CachedPosition;
+            Quaternion rotation = VRAttachMenu.CachedRotation;
+
+            if (show != attachShown)
+            {
+                attachShown = show;
+                attachPanel.gameObject.SetActive(show);
+                if (show)
+                {
+                    attachPanel.position = position;
+                    attachPanel.rotation = rotation;
+                    VRLog.Info("attach menu panel shown on the gun.");
+                }
+            }
+            if (!show)
+            {
+                return;
+            }
+
+            Rect rect = VRAttachMenu.CanvasRect;
+            float u0 = rect.xMin;
+            float u1 = rect.xMax;
+            float v0 = 1f - rect.yMax;
+            float v1 = 1f - rect.yMin;
+            attachUv = Rect.MinMaxRect(u0, v0, u1, v1);
+
+            float aspect = ((u1 - u0) * uiTexture.width) / Mathf.Max(1f, (v1 - v0) * uiTexture.height);
+            attachPanel.localScale = new Vector3(VRAttachMenu.PanelWidth, VRAttachMenu.PanelWidth / aspect, 1f);
+
+            // Follows the gun with a little smoothing, so the panel does not shake with the hand.
+            float t = 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime);
+            attachPanel.position = Vector3.Lerp(attachPanel.position, position, t);
+            attachPanel.rotation = Quaternion.Slerp(attachPanel.rotation, rotation, t);
+        }
+
+        /// <summary>
+        /// Shows the game's hints and messages (pickup label, climb, reload prompt, xp, ...) on the near panel and cuts
+        /// their spot out of the HUD panel, only in the in-game HUD layout and only while one of the boxes is visible.
+        /// Otherwise the HUD panel is whole.
         /// </summary>
         private void UpdateHint(Transform eye)
         {
-            bool show = eye != null && hintRectValid && !menuLayout
-                && PlayerUI.messageBox != null && PlayerUI.messageBox.IsVisible;
+            Rect hintRect = default;
+            bool show = eye != null && !menuLayout && TryGetHintRect(out hintRect);
 
             if (show != hintShown || (show && hintRect != hintShownRect))
             {
@@ -215,7 +314,7 @@ namespace UnturnedVR.VR
                     if (!loggedHint)
                     {
                         loggedHint = true;
-                        VRLog.Info("pickup label panel: rect " + hintRect + " in canvas " + CanvasSize + ".");
+                        VRLog.Info("hint panel: rect " + hintRect + " in canvas " + CanvasSize + ".");
                     }
                 }
                 else
@@ -510,6 +609,25 @@ namespace UnturnedVR.VR
             hintRenderer.receiveShadows = false;
             hintPanel = hint.transform;
             hint.SetActive(false);
+
+            // Attachment menu panel: same texture and layer, cropped to the menu's rectangle, hidden until needed.
+            GameObject attach = new GameObject("UnturnedVR GUI Attach Panel");
+            attach.layer = panelLayer;
+            attach.transform.SetParent(transform, worldPositionStays: false);
+            Mesh attachMesh = BuildQuad();
+            Rect crop = VRAttachMenu.CanvasRect;
+            attachMesh.uv = new[]
+            {
+                new Vector2(crop.xMin, 1f - crop.yMax), new Vector2(crop.xMax, 1f - crop.yMax),
+                new Vector2(crop.xMin, 1f - crop.yMin), new Vector2(crop.xMax, 1f - crop.yMin),
+            };
+            attach.AddComponent<MeshFilter>().sharedMesh = attachMesh;
+            MeshRenderer attachRenderer = attach.AddComponent<MeshRenderer>();
+            attachRenderer.sharedMaterial = panelMaterial;
+            attachRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            attachRenderer.receiveShadows = false;
+            attachPanel = attach.transform;
+            attach.SetActive(false);
         }
 
         private void ResizePanel()
@@ -672,9 +790,11 @@ namespace UnturnedVR.VR
 
         private void SetPanelVisible(bool visible)
         {
-            if (panel != null && panel.gameObject.activeSelf != visible)
+            // The big panel makes way for the attachment menu panel on the gun.
+            bool bigVisible = visible && !attachShown;
+            if (panel != null && panel.gameObject.activeSelf != bigVisible)
             {
-                panel.gameObject.SetActive(visible);
+                panel.gameObject.SetActive(bigVisible);
             }
             if (overlayCamera != null && overlayCamera.enabled != visible)
             {
