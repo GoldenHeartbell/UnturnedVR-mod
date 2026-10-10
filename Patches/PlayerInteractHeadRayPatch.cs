@@ -5,11 +5,11 @@ using UnityEngine;
 namespace UnturnedVR.Patches
 {
     /// <summary>
-    /// M5: pickup/interact targeting follows the head. PlayerInteract.Update casts a single ray (4 m,
-    /// first person) from MainCamera.instance's position along its forward, and MainCamera is disabled
-    /// in VR and follows the mouse-look aim. The prefix puts MainCamera's transform on the VR eye for the
-    /// duration of Update (so the ray, focus, outline and hint all use the head), the postfix puts it back.
-    /// Later, with motion controls, the pose below is the one to swap for the hand.
+    /// Pickup/interact targeting. PlayerInteract.Update casts a single ray (4 m, first person) from
+    /// MainCamera.instance's position along its forward, and MainCamera is disabled in VR and follows the
+    /// mouse-look aim. The prefix puts MainCamera's transform on the right hand (or the VR eye while that
+    /// controller is not tracked) for the duration of Update, so the ray, focus, outline and hint all use it;
+    /// the postfix puts it back.
     /// </summary>
     [HarmonyPatch(typeof(PlayerInteract), "Update")]
     internal static class PlayerInteractHeadRayPatch
@@ -37,17 +37,28 @@ namespace UnturnedVR.Patches
             __state.Swapped = true;
             __state.Position = t.position;
             __state.Rotation = t.rotation;
-            t.SetPositionAndRotation(eye.transform.position, eye.transform.rotation);
+
+            Transform source = eye.transform;
+            Transform hand = VR.VRHands.Anchor(VR.VRHands.Right);
+            if (hand != null && VR.VRHands.IsTracked(VR.VRHands.Right))
+            {
+                source = hand;
+            }
+            t.SetPositionAndRotation(source.position, source.rotation);
         }
 
         private static void Postfix(SavedPose __state)
         {
-            if (!__state.Swapped || MainCamera.instance == null)
+            if (!__state.Swapped)
             {
                 return;
             }
 
-            MainCamera.instance.transform.SetPositionAndRotation(__state.Position, __state.Rotation);
+            if (MainCamera.instance != null)
+            {
+                MainCamera.instance.transform.SetPositionAndRotation(__state.Position, __state.Rotation);
+            }
+            VR.VRHaptics.InteractFocus(PlayerInteract.interactable);
         }
     }
 }

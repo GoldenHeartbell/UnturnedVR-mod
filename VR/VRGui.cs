@@ -66,6 +66,7 @@ namespace UnturnedVR.VR
         private bool loggedHint;
         private RenderTexture uiTexture;
         private Camera overlayCamera;
+        private Transform loadingHead;
         private Transform panel;
         private Material panelMaterial;
         private int panelLayer = -1;
@@ -77,6 +78,9 @@ namespace UnturnedVR.VR
         private bool menuLayout = true;
         private bool menuPoseValid;
         private bool hadHeadPose = true;
+        private bool menuRailed;
+        private Vector3 menuLocalPosition;
+        private Quaternion menuLocalRotation = Quaternion.identity;
         private Vector3 menuEyeAnchor;
         private Vector3 menuPanelPosition;
         private Quaternion menuPanelRotation;
@@ -89,6 +93,13 @@ namespace UnturnedVR.VR
         }
 
         private void LateUpdate()
+        {
+            long t = VRPerf.Begin();
+            LateUpdateInner();
+            VRPerf.End(VRPerf.Gui, t);
+        }
+
+        private void LateUpdateInner()
         {
             if (!VRState.IsActive)
             {
@@ -132,7 +143,10 @@ namespace UnturnedVR.VR
                 {
                     standalone = true;
                     eyeCamera = null;
-                    overlayCamera.transform.SetParent(transform, worldPositionStays: false);
+                    // Nothing else applies the headset pose here, so without a tracked parent the camera (and
+                    // with it the panel) would be glued to the head.
+                    EnsureLoadingHead().gameObject.SetActive(true);
+                    overlayCamera.transform.SetParent(loadingHead, worldPositionStays: false);
                     overlayCamera.transform.localPosition = Vector3.zero;
                     overlayCamera.transform.localRotation = Quaternion.identity;
                     overlayCamera.clearFlags = CameraClearFlags.SolidColor;
@@ -154,6 +168,10 @@ namespace UnturnedVR.VR
             {
                 standalone = false;
                 overlayCamera.clearFlags = CameraClearFlags.Depth;
+                if (loadingHead != null)
+                {
+                    loadingHead.gameObject.SetActive(false);
+                }
             }
 
             if (eye != eyeCamera)
@@ -273,10 +291,10 @@ namespace UnturnedVR.VR
             triangles.Add(start + 2); triangles.Add(start + 3); triangles.Add(start + 1);
         }
 
-        // Temporary: we cannot see the headset, so report what the pipeline is doing every few seconds.
+        // Off by default (VRDebugFlags.LogGui): reports what the pipeline is doing every 10 s, incl. a full ReadPixels.
         private void LogDiagnostics(Camera eye)
         {
-            if (Time.unscaledTime < nextDiagnosticTime)
+            if (!VRDebugFlags.LogGui || Time.unscaledTime < nextDiagnosticTime)
             {
                 return;
             }
@@ -301,6 +319,24 @@ namespace UnturnedVR.VR
                     covered++;
                 }
             }
+
+            // Which cameras draw to the headset, and whether the head pose reaches the rig camera.
+            var cameras = new System.Text.StringBuilder();
+            foreach (Camera camera in Camera.allCameras)
+            {
+                if (camera.targetTexture == null)
+                {
+                    cameras.Append("[\"").Append(camera.name).Append("\" depth=").Append(camera.depth)
+                        .Append(" stereo=").Append(camera.stereoTargetEye).Append(" parent=")
+                        .Append(camera.transform.parent != null ? camera.transform.parent.name : "none").Append("] ");
+                }
+            }
+            Transform rigTransform = VRRig.RigTransform;
+            string rigInfo = rigTransform == null ? "no rig"
+                : "rig parent=" + (rigTransform.parent != null ? rigTransform.parent.name : "none")
+                    + " rigRot=" + rigTransform.rotation.eulerAngles + " hasHeadPose=" + VRRig.HasHeadPose
+                    + " hmdLocalRot=" + (eye != null ? eye.transform.localRotation.eulerAngles.ToString() : "n/a");
+            VRLog.Info("diag: cameras=" + cameras + "; " + rigInfo + "; inMenu=" + VRRig.InMenu);
 
             VRLog.Info("diag: eye=" + eyeInfo
                 + "; panel " + (panel == null ? "null" : "active=" + panel.gameObject.activeSelf + " pos=" + panel.position + " scale=" + panel.localScale)
@@ -418,6 +454,29 @@ namespace UnturnedVR.VR
             overlayCamera.stereoTargetEye = StereoTargetEyeMask.Both;
         }
 
+        // The head pose for the loading screen, when no game camera and no VR rig exist. Same pose sources
+        // as the rig's HMD camera (TrackedPoseDriver, plus the direct OpenVR read when XR has no head
+        // device); its parent is this object at the origin, so the local pose is the tracking-space pose.
+        private Transform EnsureLoadingHead()
+        {
+            if (loadingHead == null)
+            {
+                GameObject go = new GameObject("UnturnedVR Loading Head");
+                go.transform.SetParent(transform, worldPositionStays: false);
+
+                UnityEngine.SpatialTracking.TrackedPoseDriver driver = go.AddComponent<UnityEngine.SpatialTracking.TrackedPoseDriver>();
+                driver.SetPoseSource(UnityEngine.SpatialTracking.TrackedPoseDriver.DeviceType.GenericXRDevice,
+                    UnityEngine.SpatialTracking.TrackedPoseDriver.TrackedPose.Center);
+                driver.trackingType = UnityEngine.SpatialTracking.TrackedPoseDriver.TrackingType.RotationAndPosition;
+                driver.updateType = UnityEngine.SpatialTracking.TrackedPoseDriver.UpdateType.UpdateAndBeforeRender;
+                driver.UseRelativeTransform = true;
+                go.AddComponent<VROpenVRPoseFallback>();
+
+                loadingHead = go.transform;
+            }
+            return loadingHead;
+        }
+
         private void CreatePanel()
         {
             Material source = Canvas.GetDefaultCanvasMaterial();
@@ -520,13 +579,51 @@ namespace UnturnedVR.VR
             // Place from the camera's forward even without a head pose (the editor's OpenXR session often
             // never delivers one); otherwise the panel stays where it was and the rig faces away from it.
             // Re-place once the first pose arrives, since that changes the view direction and height.
-            bool hasPose = VRRig.ActiveCamera == null || VRRig.HasHeadPose;
+            bool hasPose = standalone ? loadingHead.localPosition != Vector3.zero
+                : VRRig.ActiveCamera == null || VRRig.HasHeadPose;
             if (hasPose && !hadHeadPose)
             {
                 needsRecenter = true;
             }
             hadHeadPose = hasPose;
 
+            // In the main menu the rig hangs on the scripted menu camera (fly-in, page pans). Anchor the panel in
+            // the rig's tracking space: it then travels rigidly with that camera (no re-anchoring jumps) and,
+            // when the camera comes to rest, is still exactly where it was placed in front of the head.
+            Transform rig = VRRig.RigTransform;
+            // The same holds in game while a cursor UI (inventory, pause) is open: the rig hangs on the player,
+            // which rides along in a vehicle, so a rig-local panel stays put in front of you instead of being
+            // re-pinned in world space every time the car has moved 1.5 m.
+            bool railed = !standalone && rig != null && VRRig.ActiveCamera != null;
+            if (railed != menuRailed)
+            {
+                menuRailed = railed;
+                needsRecenter = true;
+            }
+
+            if (railed)
+            {
+                if (needsRecenter || !menuPoseValid)
+                {
+                    Vector3 localForward = rig.InverseTransformDirection(eye.forward);
+                    localForward.y = 0f;
+                    if (localForward.sqrMagnitude < 0.01f)
+                    {
+                        localForward = Vector3.forward;
+                    }
+
+                    menuLocalRotation = Quaternion.LookRotation(localForward.normalized, Vector3.up);
+                    menuLocalPosition = rig.InverseTransformPoint(eye.position) + menuLocalRotation * Vector3.forward * MenuPanelDistance;
+                    menuPoseValid = true;
+                    needsRecenter = false;
+                }
+
+                panel.position = rig.TransformPoint(menuLocalPosition);
+                panel.rotation = rig.rotation * menuLocalRotation;
+                return;
+            }
+
+            // Old teleporting code: the panel is pinned in world space, but if the camera moves far away it is re-anchored
             bool cameraMovedFar = (eye.position - menuEyeAnchor).sqrMagnitude > MenuReanchorDistance * MenuReanchorDistance;
             if (needsRecenter || cameraMovedFar || !menuPoseValid)
             {

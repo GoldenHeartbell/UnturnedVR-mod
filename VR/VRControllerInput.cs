@@ -27,6 +27,15 @@ namespace UnturnedVR.VR
         public static Quaternion RightRotation { get; private set; }
         public static bool RightTrigger { get; private set; }
 
+        /// <summary>Left controller pose in tracking space, valid when <see cref="LeftPoseValid"/>.</summary>
+        public static bool LeftPoseValid { get; private set; }
+        public static Vector3 LeftPosition { get; private set; }
+        public static Quaternion LeftRotation { get; private set; }
+
+        /// <summary>Controller velocity in tracking space (m/s, finite difference per frame); zero while untracked.</summary>
+        public static Vector3 LeftVelocity { get; private set; }
+        public static Vector3 RightVelocity { get; private set; }
+
         /// <summary>Buttons currently held on each controller (zero when that controller is not tracked).</summary>
         public static VRButton LeftButtons { get; private set; }
         public static VRButton RightButtons { get; private set; }
@@ -34,6 +43,17 @@ namespace UnturnedVR.VR
         private const float TriggerPressAxis = 0.75f;
         private const float GripPressAxis = 0.75f;
         private const float StickClickMaxDeflection = 0.7f;
+
+        private static readonly uint ControllerStateSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(VRControllerState_t));
+
+        private static bool prevLeftPoseValid;
+        private static bool prevRightPoseValid;
+        private static Vector3 prevLeftPosition;
+        private static Vector3 prevRightPosition;
+
+        // "l_trigger" etc. built once: ApplyActions runs per hand per frame.
+        private static readonly string[] LeftKeys = { "l_trigger", "l_grip", "l_a", "l_b", "l_stickclick" };
+        private static readonly string[] RightKeys = { "r_trigger", "r_grip", "r_a", "r_b", "r_stickclick" };
 
         private static VRButton prevLeftButtons;
         private static VRButton prevRightButtons;
@@ -56,7 +76,13 @@ namespace UnturnedVR.VR
                 return;
             }
             lastFrame = Time.frameCount;
+            long perfStart = VRPerf.Begin();
+            RefreshCore();
+            VRPerf.End(VRPerf.Controllers, perfStart);
+        }
 
+        private static void RefreshCore()
+        {
             bool leftOk = TryReadXR(InputDeviceCharacteristics.Left, out Vector2 left);
             bool rightOk = TryReadXR(InputDeviceCharacteristics.Right, out Vector2 right);
             string source = "XR";
@@ -85,6 +111,8 @@ namespace UnturnedVR.VR
             }
 
             RefreshRightPointer();
+            ReadHandPose(false);
+            UpdateVelocity();
 
             LeftButtons = ApplyActions("l", ReadButtons(InputDeviceCharacteristics.Left, ETrackedControllerRole.LeftHand, "L", ref prevLeftRaw));
             RightButtons = ApplyActions("r", ReadButtons(InputDeviceCharacteristics.Right, ETrackedControllerRole.RightHand, "R", ref prevRightRaw));
@@ -102,16 +130,17 @@ namespace UnturnedVR.VR
         // Overrides each button with its SteamVR Input action when that action has an active binding.
         private static VRButton ApplyActions(string hand, VRButton mask)
         {
-            mask = ApplyAction(hand, "trigger", VRButton.Trigger, mask);
-            mask = ApplyAction(hand, "grip", VRButton.Grip, mask);
-            mask = ApplyAction(hand, "a", VRButton.A, mask);
-            mask = ApplyAction(hand, "b", VRButton.B, mask);
-            return ApplyAction(hand, "stickclick", VRButton.StickClick, mask);
+            string[] keys = hand == "l" ? LeftKeys : RightKeys;
+            mask = ApplyAction(keys[0], VRButton.Trigger, mask);
+            mask = ApplyAction(keys[1], VRButton.Grip, mask);
+            mask = ApplyAction(keys[2], VRButton.A, mask);
+            mask = ApplyAction(keys[3], VRButton.B, mask);
+            return ApplyAction(keys[4], VRButton.StickClick, mask);
         }
 
-        private static VRButton ApplyAction(string hand, string name, VRButton button, VRButton mask)
+        private static VRButton ApplyAction(string key, VRButton button, VRButton mask)
         {
-            if (!VRSteamInput.TryGetBool(hand + "_" + name, out bool state))
+            if (!VRSteamInput.TryGetBool(key, out bool state))
             {
                 return mask;
             }
@@ -149,17 +178,17 @@ namespace UnturnedVR.VR
             uint index = system.GetTrackedDeviceIndexForControllerRole(role);
             if (index == OpenVR.k_unTrackedDeviceIndexInvalid)
             {
-                LogHandStatus(name, "no controller has the " + role + " role");
+                if (VRDebugFlags.LogButtons) LogHandStatus(name, "no controller has the " + role + " role");
                 return VRButton.None;
             }
 
             VRControllerState_t state = default;
-            if (!system.GetControllerState(index, ref state, (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(VRControllerState_t))))
+            if (!system.GetControllerState(index, ref state, ControllerStateSize))
             {
-                LogHandStatus(name, "OpenVR device " + index + ": GetControllerState failed");
+                if (VRDebugFlags.LogButtons) LogHandStatus(name, "OpenVR device " + index + ": GetControllerState failed");
                 return VRButton.None;
             }
-            LogHandStatus(name, "OpenVR device " + index + " (" + role + ")");
+            if (VRDebugFlags.LogButtons) LogHandStatus(name, "OpenVR device " + index + " (" + role + ")");
 
             ulong pressed = state.ulButtonPressed;
             if (VRDebugFlags.LogButtons && pressed != prevRaw)
@@ -265,26 +294,14 @@ namespace UnturnedVR.VR
 
         private static bool TryReadRightXR(out Vector3 position, out Quaternion rotation, out bool trigger)
         {
-            position = Vector3.zero;
-            rotation = Quaternion.identity;
             trigger = false;
-
-            deviceBuffer.Clear();
-            InputDevices.GetDevicesWithCharacteristics(
-                InputDeviceCharacteristics.Controller | InputDeviceCharacteristics.HeldInHand | InputDeviceCharacteristics.Right, deviceBuffer);
-            if (deviceBuffer.Count == 0)
+            if (!TryReadPoseXR(InputDeviceCharacteristics.Right, out position, out rotation))
             {
                 return false;
             }
 
-            InputDevice device = deviceBuffer[0];
-            if (!device.TryGetFeatureValue(CommonUsages.devicePosition, out position)
-                || !device.TryGetFeatureValue(CommonUsages.deviceRotation, out rotation))
-            {
-                return false;
-            }
-
-            if (device.TryGetFeatureValue(CommonUsages.triggerButton, out bool pressed))
+            // TryReadPoseXR left the buffer holding the right controller.
+            if (deviceBuffer[0].TryGetFeatureValue(CommonUsages.triggerButton, out bool pressed))
             {
                 trigger = pressed;
             }
@@ -293,9 +310,40 @@ namespace UnturnedVR.VR
 
         private static bool TryReadRightOpenVR(out Vector3 position, out Quaternion rotation, out bool trigger)
         {
+            trigger = false;
+            if (!TryReadPoseOpenVR(ETrackedControllerRole.RightHand, out position, out rotation, out uint index))
+            {
+                return false;
+            }
+
+            VRControllerState_t state = default;
+            if (OpenVR.System.GetControllerState(index, ref state, ControllerStateSize))
+            {
+                ulong triggerBit = 1UL << (int)EVRButtonId.k_EButton_SteamVR_Trigger;
+                trigger = (state.ulButtonPressed & triggerBit) != 0 || state.rAxis1.x > TriggerPressAxis;
+            }
+            return true;
+        }
+
+        // Pose of one controller in tracking space. XR first, then the compositor's render pose.
+        private static bool TryReadPoseXR(InputDeviceCharacteristics hand, out Vector3 position, out Quaternion rotation)
+        {
             position = Vector3.zero;
             rotation = Quaternion.identity;
-            trigger = false;
+
+            deviceBuffer.Clear();
+            InputDevices.GetDevicesWithCharacteristics(
+                InputDeviceCharacteristics.Controller | InputDeviceCharacteristics.HeldInHand | hand, deviceBuffer);
+            return deviceBuffer.Count > 0
+                && deviceBuffer[0].TryGetFeatureValue(CommonUsages.devicePosition, out position)
+                && deviceBuffer[0].TryGetFeatureValue(CommonUsages.deviceRotation, out rotation);
+        }
+
+        private static bool TryReadPoseOpenVR(ETrackedControllerRole role, out Vector3 position, out Quaternion rotation, out uint index)
+        {
+            position = Vector3.zero;
+            rotation = Quaternion.identity;
+            index = OpenVR.k_unTrackedDeviceIndexInvalid;
 
             CVRSystem system = OpenVR.System;
             if (system == null)
@@ -303,7 +351,7 @@ namespace UnturnedVR.VR
                 return false;
             }
 
-            uint index = system.GetTrackedDeviceIndexForControllerRole(ETrackedControllerRole.RightHand);
+            index = system.GetTrackedDeviceIndexForControllerRole(role);
             if (index == OpenVR.k_unTrackedDeviceIndexInvalid || index >= OpenVR.k_unMaxTrackedDeviceCount)
             {
                 return false;
@@ -327,14 +375,54 @@ namespace UnturnedVR.VR
             }
 
             VROpenVRPoseFallback.ConvertPose(pose.mDeviceToAbsoluteTracking, out position, out rotation);
-
-            VRControllerState_t state = default;
-            if (system.GetControllerState(index, ref state, (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(VRControllerState_t))))
-            {
-                ulong triggerBit = 1UL << (int)EVRButtonId.k_EButton_SteamVR_Trigger;
-                trigger = (state.ulButtonPressed & triggerBit) != 0 || state.rAxis1.x > TriggerPressAxis;
-            }
             return true;
+        }
+
+        /// <summary>
+        /// Re-reads both controller poses without touching buttons or velocity. Called right before rendering
+        /// (VRHands) so hands use the freshest predicted pose instead of the frame-start sample.
+        /// </summary>
+        public static void RefreshPoses()
+        {
+            ReadHandPose(false);
+            ReadHandPose(true);
+        }
+
+        private static void ReadHandPose(bool right)
+        {
+            InputDeviceCharacteristics xrHand = right ? InputDeviceCharacteristics.Right : InputDeviceCharacteristics.Left;
+            ETrackedControllerRole role = right ? ETrackedControllerRole.RightHand : ETrackedControllerRole.LeftHand;
+
+            bool ok = TryReadPoseXR(xrHand, out Vector3 position, out Quaternion rotation)
+                || TryReadPoseOpenVR(role, out position, out rotation, out _);
+
+            if (right)
+            {
+                RightPoseValid = ok;
+                if (ok) { RightPosition = position; RightRotation = rotation; }
+            }
+            else
+            {
+                LeftPoseValid = ok;
+                if (ok) { LeftPosition = position; LeftRotation = rotation; }
+            }
+        }
+
+        // Velocity by finite difference of the frame-start poses (works with any pose source).
+        private static void UpdateVelocity()
+        {
+            float dt = Time.unscaledDeltaTime;
+            if (dt <= 0.0001f)
+            {
+                return;
+            }
+
+            LeftVelocity = LeftPoseValid && prevLeftPoseValid ? (LeftPosition - prevLeftPosition) / dt : Vector3.zero;
+            RightVelocity = RightPoseValid && prevRightPoseValid ? (RightPosition - prevRightPosition) / dt : Vector3.zero;
+            prevLeftPoseValid = LeftPoseValid;
+            prevRightPoseValid = RightPoseValid;
+            prevLeftPosition = LeftPosition;
+            prevRightPosition = RightPosition;
         }
 
         private static bool TryReadXR(InputDeviceCharacteristics hand, out Vector2 axis)
@@ -362,7 +450,7 @@ namespace UnturnedVR.VR
             }
 
             VRControllerState_t state = default;
-            if (!system.GetControllerState(index, ref state, (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(VRControllerState_t))))
+            if (!system.GetControllerState(index, ref state, ControllerStateSize))
             {
                 return false;
             }

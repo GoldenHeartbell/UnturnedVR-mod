@@ -78,6 +78,16 @@
       <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.AudioModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Perf report: particle system count of an equipped item. -->
+    <Reference Include="UnityEngine.ParticleSystemModule">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.ParticleSystemModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Phase 4: Physics.Linecast (muzzle wall check). -->
+    <Reference Include="UnityEngine.PhysicsModule">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.PhysicsModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <!-- M2 probe only: Unity.XR.Management.dll is not part of the base install, we're adding it.

@@ -178,6 +178,7 @@ namespace UnturnedVR.VR
                 rigObject.AddComponent<VRSessionMonitor>();
             }
             hmdObject.AddComponent<VROpenVRPoseFallback>();
+            VRHands.Create(rigObject.transform);
 #if UNITY_EDITOR
             rigObject.AddComponent<VRDebugKeys>();
 #endif
@@ -220,6 +221,10 @@ namespace UnturnedVR.VR
             if (VRGui.PanelLayer < 0)
             {
                 mask = from.cullingMask;
+            }
+            if (VRArms.Active && !VRDebugFlags.PerfNoViewmodel)
+            {
+                mask |= 1 << LayerMasks.VIEWMODEL; // the arms/equipped item, drawn in the world by this camera
             }
             if (to.cullingMask != mask)
             {

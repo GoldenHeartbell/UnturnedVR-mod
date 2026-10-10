@@ -26,8 +26,49 @@ namespace UnturnedVR.VR
         private static readonly HashSet<string> loggedActive = new HashSet<string>();
         private static int lastUpdateFrame = -1;
         private static bool updateFailed;
+        private static readonly VRActiveActionSet_t[] activeSets = new VRActiveActionSet_t[1];
+        private static readonly uint ActiveSetSize = (uint)Marshal.SizeOf(typeof(VRActiveActionSet_t));
+        private static readonly uint DigitalSize = (uint)Marshal.SizeOf(typeof(InputDigitalActionData_t));
+        private static readonly uint AnalogSize = (uint)Marshal.SizeOf(typeof(InputAnalogActionData_t));
 
         public static bool Ready { get { return ready && !updateFailed; } }
+
+        private static readonly ulong[] hapticHandles = new ulong[2]; // 0 = left, 1 = right
+        private static readonly bool[] hapticBound = new bool[2];
+        private static readonly float[] hapticCheckedAt = { -100f, -100f };
+        private static readonly ulong[] originBuffer = new ulong[8];
+
+        /// <summary>
+        /// Rumble through the SteamVR haptic action. False when the action is missing or not bound to this controller
+        /// (the user's SteamVR binding for the game may predate the haptic actions): the caller then uses another path.
+        /// The binding state is looked up again every few seconds, so binding it in SteamVR takes effect while playing.
+        /// </summary>
+        public static bool TryHaptic(bool right, float seconds, float frequency, float amplitude)
+        {
+            int side = right ? 1 : 0;
+            if (!Ready || hapticHandles[side] == 0)
+            {
+                return false;
+            }
+            if (Time.unscaledTime - hapticCheckedAt[side] > 3f)
+            {
+                hapticCheckedAt[side] = Time.unscaledTime;
+                for (int i = 0; i < originBuffer.Length; i++)
+                {
+                    originBuffer[i] = 0;
+                }
+                bool bound = OpenVR.Input.GetActionOrigins(setHandle, hapticHandles[side], originBuffer) == EVRInputError.None
+                    && originBuffer[0] != 0;
+                if (bound != hapticBound[side])
+                {
+                    hapticBound[side] = bound;
+                    VRLog.Info("SteamVR Input: " + (right ? "right" : "left") + " haptic action is " + (bound ? "bound." : "NOT bound to the controller (rumble uses the XR fallback)."));
+                }
+            }
+            return hapticBound[side]
+                && OpenVR.Input.TriggerHapticVibrationAction(hapticHandles[side], 0f, seconds, frequency, amplitude,
+                    OpenVR.k_ulInvalidInputValueHandle) == EVRInputError.None;
+        }
 
         /// <summary>Registers the manifest once (first call after OpenVR is up) and refreshes the action state once per frame.</summary>
         public static void Update()
@@ -47,8 +88,8 @@ namespace UnturnedVR.VR
             }
             lastUpdateFrame = Time.frameCount;
 
-            VRActiveActionSet_t[] sets = { new VRActiveActionSet_t { ulActionSet = setHandle, nPriority = 0 } };
-            EVRInputError err = OpenVR.Input.UpdateActionState(sets, (uint)Marshal.SizeOf(typeof(VRActiveActionSet_t)));
+            activeSets[0].ulActionSet = setHandle;
+            EVRInputError err = OpenVR.Input.UpdateActionState(activeSets, ActiveSetSize);
             if (err != EVRInputError.None)
             {
                 updateFailed = true;
@@ -66,7 +107,7 @@ namespace UnturnedVR.VR
                 return false;
             }
             InputDigitalActionData_t data = default;
-            if (OpenVR.Input.GetDigitalActionData(handle, ref data, (uint)Marshal.SizeOf(typeof(InputDigitalActionData_t)), OpenVR.k_ulInvalidInputValueHandle) != EVRInputError.None
+            if (OpenVR.Input.GetDigitalActionData(handle, ref data, DigitalSize, OpenVR.k_ulInvalidInputValueHandle) != EVRInputError.None
                 || !data.bActive)
             {
                 return false;
@@ -86,7 +127,7 @@ namespace UnturnedVR.VR
                 return false;
             }
             InputAnalogActionData_t data = default;
-            if (OpenVR.Input.GetAnalogActionData(handle, ref data, (uint)Marshal.SizeOf(typeof(InputAnalogActionData_t)), OpenVR.k_ulInvalidInputValueHandle) != EVRInputError.None
+            if (OpenVR.Input.GetAnalogActionData(handle, ref data, AnalogSize, OpenVR.k_ulInvalidInputValueHandle) != EVRInputError.None
                 || !data.bActive)
             {
                 return false;
@@ -141,6 +182,19 @@ namespace UnturnedVR.VR
                     }
                     handles[key] = handle;
                 }
+            }
+
+            for (int side = 0; side < 2; side++)
+            {
+                string key = (side == 0 ? "l" : "r") + "_haptic";
+                ulong handle = 0;
+                err = OpenVR.Input.GetActionHandle(ActionSet + "/out/" + key, ref handle);
+                if (err != EVRInputError.None || handle == 0)
+                {
+                    VRLog.Warn("SteamVR Input: GetActionHandle(" + key + ") failed (" + err + "), rumble uses the XR fallback.");
+                    continue;
+                }
+                hapticHandles[side] = handle;
             }
 
             VRLog.Info("SteamVR Input: manifest registered (" + path + "), " + handles.Count + " action handles.");

@@ -22,6 +22,7 @@ namespace UnturnedVR.VR
             public Func<KeyCode> Key;
             public bool AllowInUi;
             public bool UiOnly;
+            public int Role; // 1 = primary (use/fire) trigger, 2 = secondary (aim) trigger: the side follows the item's hand
 
             public bool Held;
             public bool Down;
@@ -32,8 +33,8 @@ namespace UnturnedVR.VR
         // Layout for Valve Index (see docs/progress.md). Hotbar flick on the right stick is phase 2.
         private static readonly Entry[] entries =
         {
-            new Entry { Right = false, Button = VRButton.Trigger,    Key = () => ControlsSettings.primary },
-            new Entry { Right = true,  Button = VRButton.Trigger,    Key = () => ControlsSettings.secondary },
+            new Entry { Right = false, Button = VRButton.Trigger,    Key = () => ControlsSettings.primary, Role = 1 },
+            new Entry { Right = true,  Button = VRButton.Trigger,    Key = () => ControlsSettings.secondary, Role = 2 },
             new Entry { Right = true,  Button = VRButton.Grip,       Key = () => ControlsSettings.interact },
             new Entry { Right = false, Button = VRButton.Grip,       Key = () => ControlsSettings.firemode },
             new Entry { Right = true,  Button = VRButton.A,          Key = () => ControlsSettings.jump },
@@ -47,6 +48,7 @@ namespace UnturnedVR.VR
         };
 
         private static int lastFrame = -1;
+        private static bool primaryRight; // the use/fire trigger is on the right controller
 
         public static bool GetKey(KeyCode key)
         {
@@ -85,14 +87,28 @@ namespace UnturnedVR.VR
                 return;
             }
             lastFrame = Time.frameCount;
+            long perfStart = VRPerf.Begin();
 
             VRControllerInput.Refresh();
             bool uiOpen = VRPointer.Active || (PlayerUI.window != null && PlayerUI.window.showCursor);
 
+            VRHold.Update((VRControllerInput.LeftButtons & VRButton.Grip) != 0,
+                (VRControllerInput.RightButtons & VRButton.Grip) != 0, !uiOpen);
+
+            // Fire/use is on the trigger of the hand that holds the item (the trigger hand of a two-handed gun); the
+            // other trigger is the secondary (aim). Nothing held: left fires. Only switched while no trigger is down.
+            if (((VRControllerInput.LeftButtons | VRControllerInput.RightButtons) & VRButton.Trigger) == 0)
+            {
+                int itemHand = VRArms.ItemHand;
+                primaryRight = itemHand >= 0 && itemHand == VRHands.Right;
+            }
+
             foreach (Entry e in entries)
             {
-                VRButton mask = e.Right ? VRControllerInput.RightButtons : VRControllerInput.LeftButtons;
-                bool raw = (mask & e.Button) != 0 && (!e.UiOnly || uiOpen);
+                bool right = e.Role == 0 ? e.Right : (e.Role == 1) == primaryRight;
+                VRButton mask = right ? VRControllerInput.RightButtons : VRControllerInput.LeftButtons;
+                bool raw = (mask & e.Button) != 0 && (!e.UiOnly || uiOpen)
+                    && !(e.Button == VRButton.Grip && VRHold.Consumed(e.Right));
 
                 if (!raw)
                 {
@@ -108,6 +124,7 @@ namespace UnturnedVR.VR
                 e.Up = !held && e.Held;
                 e.Held = held;
             }
+            VRPerf.End(VRPerf.KeyMap, perfStart);
         }
     }
 }

@@ -27,9 +27,22 @@ namespace UnturnedVR.VR
         private float nextDiagnosticTime;
         private readonly List<InputDevice> deviceBuffer = new List<InputDevice>();
 
+        // Menu camera counts as resting below these speeds for this long (guesses to tune in headset).
+        private const float MenuStillSpeed = 0.1f;        // m/s
+        private const float MenuStillTurnRate = 4f;       // degrees/s
+        private const float MenuStillSeconds = 0.3f;
+
+        private bool menuHasPose;
+        private float menuStillTime;
+        private Vector3 menuPosition;
+        private float menuYaw;
+        private Vector3 lastCameraPosition;
+        private float lastCameraYaw;
+
         private void OnEnable()
         {
             hasCalibratedHeight = false;
+            menuHasPose = false;
         }
 
         private void LateUpdate()
@@ -40,6 +53,22 @@ namespace UnturnedVR.VR
             }
 
             VRRig.SyncGraphicsSettings();
+
+            // The scripted menu camera is pitched/rolled (about 10-20 degrees down). Inheriting that tilts the
+            // whole tracking space, so the scene stays tilted against the real floor and feels glued to the
+            // head. Take only its yaw: the menu camera still drives position and heading, you look around freely.
+            // The camera also glides/rotates by itself (fly-in, page pans). A view that moves without your head
+            // moving is what makes it feel swimmy, so hold the pose and only adopt the camera's once it rests.
+            bool inMenu = VRRig.InMenu && transform.parent != null;
+            if (inMenu)
+            {
+                UpdateMenuHold(transform.parent);
+                transform.rotation = Quaternion.Euler(0f, menuYaw, 0f);
+            }
+            else
+            {
+                menuHasPose = false;
+            }
 
             // TrackedPoseDriver leaves the camera at its local origin until a pose arrives.
             if (!hasCalibratedHeight)
@@ -60,7 +89,33 @@ namespace UnturnedVR.VR
                 ? MainCamera.instance.transform.localPosition.y
                 : FallbackStandingEyeHeight;
 
+            if (inMenu)
+            {
+                transform.position = menuPosition + Vector3.down * calibrationHeadY;
+                return;
+            }
+
             transform.localPosition = new Vector3(0f, standingEyeHeight - calibrationHeadY, 0f);
+        }
+
+        // Adopts the menu camera's position and yaw only after it has been (nearly) still for a moment.
+        private void UpdateMenuHold(Transform camera)
+        {
+            float yaw = camera.eulerAngles.y;
+            float dt = Mathf.Max(Time.unscaledDeltaTime, 0.0001f);
+            bool still = menuHasPose
+                && (camera.position - lastCameraPosition).magnitude / dt < MenuStillSpeed
+                && Mathf.Abs(Mathf.DeltaAngle(lastCameraYaw, yaw)) / dt < MenuStillTurnRate;
+            lastCameraPosition = camera.position;
+            lastCameraYaw = yaw;
+
+            menuStillTime = still ? menuStillTime + dt : 0f;
+            if (!menuHasPose || menuStillTime >= MenuStillSeconds)
+            {
+                menuPosition = camera.position;
+                menuYaw = yaw;
+                menuHasPose = true;
+            }
         }
 
         private void LogNoPose()

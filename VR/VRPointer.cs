@@ -17,9 +17,8 @@ namespace UnturnedVR.VR
         // Guesses to tune in-headset.
         private const float LaserWidth = 0.004f;
         private const float LaserLength = 4f;
-        // Tilt of the laser relative to the controller's forward, degrees (positive = down). Touch/Index
-        // grips may need some; 0 = straight along the pose's forward.
-        private const float PointerPitchDegrees = 0f;
+        // The laser uses the same controller tilt as the hands (VRHands.GripOffsetEuler: the raw controller
+        // forward points above where the hand points).
         private const float ScrollPerSecond = 15f;
         private const float OffPanel = -10000f;
 
@@ -78,6 +77,7 @@ namespace UnturnedVR.VR
         private LineRenderer laser;
         private bool loggedActive;
         private bool loggedHit;
+        private float nextPointerLog;
         private Tap leftTap;
         private Tap rightTap;
 
@@ -89,6 +89,13 @@ namespace UnturnedVR.VR
         }
 
         private void Update()
+        {
+            long t = VRPerf.Begin();
+            UpdateInner();
+            VRPerf.End(VRPerf.Pointer, t);
+        }
+
+        private void UpdateInner()
         {
             if (!VRState.IsActive)
             {
@@ -110,7 +117,7 @@ namespace UnturnedVR.VR
             }
 
             Vector3 origin = rig.TransformPoint(VRControllerInput.RightPosition);
-            Quaternion aim = rig.rotation * VRControllerInput.RightRotation * Quaternion.Euler(PointerPitchDegrees, 0f, 0f);
+            Quaternion aim = rig.rotation * VRControllerInput.RightRotation * Quaternion.Euler(VRHands.GripOffsetEuler);
             Vector3 direction = aim * Vector3.forward;
 
             bool hit = TryHitPanel(panel, origin, direction, out Vector3 hitPoint, out Vector2 pixel);
@@ -134,6 +141,13 @@ namespace UnturnedVR.VR
             ScrollDelta = new Vector2(0f, VRControllerInput.RightStick.y * ScrollPerSecond * Time.unscaledDeltaTime);
 
             UpdateLaser(origin, hit ? hitPoint : origin + direction * LaserLength, hit);
+
+            if (VRDebugFlags.LogPointer && Time.unscaledTime >= nextPointerLog)
+            {
+                nextPointerLog = Time.unscaledTime + 1f;
+                VRLog.Info("pointer: hit=" + hit + " mouse=" + MousePosition + " trigger=" + held + " rightA=" + rightHeld
+                    + " ctrlPos=" + VRControllerInput.RightPosition.ToString("0.00") + " panel=" + panel.position.ToString("0.00"));
+            }
 
             if (!loggedActive)
             {
