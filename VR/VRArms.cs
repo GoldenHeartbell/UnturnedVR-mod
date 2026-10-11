@@ -32,7 +32,7 @@ namespace UnturnedVR.VR
     internal class VRArms : MonoBehaviour
     {
         /// <summary>Neck pivot relative to the eye, in the yaw frame (right, up, forward). GUESS, tune in headset.</summary>
-        private static readonly Vector3 NeckOffset = new Vector3(0f, -0.28f, -0.05f);
+        internal static readonly Vector3 NeckOffset = new Vector3(0f, -0.28f, -0.05f);
         /// <summary>
         /// Uniform scale of the arm rig. Shoulder joint to hook is 0.880 unscaled (0.372 + 0.508), so reach = 0.88 x scale;
         /// a human arm is about 0.6 and the arm mesh is 0.375 thick unscaled. GUESS, tune (reach vs thickness).
@@ -312,6 +312,7 @@ namespace UnturnedVR.VR
                 VRAds.Update(); // once per frame, with the gun and the eye in their final pose
             }
             VRAds.PlaceScopeCamera();
+            VRLaser.Update(); // the laser dot follows the muzzle; the game placed it from the head earlier this frame
             VRAttachMenu.CachePanelPose(head.position); // the gun is in its final place now
 
             if (!loggedFirstApply)
@@ -330,7 +331,7 @@ namespace UnturnedVR.VR
             if (model != lastModel)
             {
                 RestoreItemScale();
-                VRHold.Reset();
+                VRHold.Reset(model != null);
                 seenHoldVersion = VRHold.Version;
                 blendStart = -1f;
                 lastModel = model;

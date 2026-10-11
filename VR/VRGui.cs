@@ -24,6 +24,9 @@ namespace UnturnedVR.VR
         private const float MenuPanelDistance = 2.2f;
         private const float MenuPanelWidth = 3.6f;
         private const float MenuReanchorDistance = 1.5f;
+        // Loading screen: how long to wait for the first head pose before placing the panel anyway
+        // (the editor's session may never deliver one).
+        private const float LoadingPoseWaitSeconds = 3f;
         private const float FollowDeadzoneDegrees = 35f;
         private const float FollowSharpness = 3f;
         private const KeyCode RecenterKey = KeyCode.F10;
@@ -115,6 +118,7 @@ namespace UnturnedVR.VR
         private RenderTexture uiTexture;
         private Camera overlayCamera;
         private Transform loadingHead;
+        private float loadingSince;
         private Transform panel;
         private Material panelMaterial;
         private int panelLayer = -1;
@@ -194,6 +198,10 @@ namespace UnturnedVR.VR
                     // Nothing else applies the headset pose here, so without a tracked parent the camera (and
                     // with it the panel) would be glued to the head.
                     EnsureLoadingHead().gameObject.SetActive(true);
+                    // Forget the pose from the last loading screen: the panel waits for a fresh one below.
+                    loadingHead.localPosition = Vector3.zero;
+                    loadingHead.localRotation = Quaternion.identity;
+                    loadingSince = Time.unscaledTime;
                     overlayCamera.transform.SetParent(loadingHead, worldPositionStays: false);
                     overlayCamera.transform.localPosition = Vector3.zero;
                     overlayCamera.transform.localRotation = Quaternion.identity;
@@ -211,6 +219,19 @@ namespace UnturnedVR.VR
                     attachShown = false; // a scene change ended the menu: the big panel must come back
                     attachPanel.gameObject.SetActive(false);
                 }
+                // Until the first head pose arrives the camera sits at the tracking origin (the floor): placing
+                // the panel now would put it at your feet and then teleport it. Show only the dark background.
+                if (loadingHead.localPosition == Vector3.zero && Time.unscaledTime - loadingSince < LoadingPoseWaitSeconds)
+                {
+                    if (panel != null && panel.gameObject.activeSelf)
+                    {
+                        panel.gameObject.SetActive(false);
+                    }
+                    overlayCamera.enabled = true;
+                    UpdateHint(null);
+                    return;
+                }
+
                 SetPanelVisible(true);
                 PlacePanel(overlayCamera.transform);
                 UpdateHint(null);

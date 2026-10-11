@@ -35,18 +35,21 @@ namespace UnturnedVR.VR
             bool right = hand == VRHands.Right;
             amplitude = Mathf.Clamp01(amplitude);
 
-            if (VRSteamInput.TryHaptic(right, seconds, frequency, amplitude))
-            {
-                LogPath("the SteamVR haptic action");
-                return;
-            }
+            // Both paths, every time: the SteamVR action says "ok" even when the user's saved binding has nothing
+            // for it, so it cannot be trusted to be the one that rumbles. On a controller where both work the second
+            // impulse just replaces the first (same amplitude and length).
+            bool action = VRSteamInput.TryHaptic(right, seconds, frequency, amplitude);
 
             devices.Clear();
             InputDevices.GetDevicesWithCharacteristics(
                 InputDeviceCharacteristics.Controller | (right ? InputDeviceCharacteristics.Right : InputDeviceCharacteristics.Left), devices);
-            if (devices.Count > 0 && devices[0].SendHapticImpulse(0, amplitude, seconds))
+            bool xr = devices.Count > 0 && devices[0].SendHapticImpulse(0, amplitude, seconds);
+
+            if (!loggedPath)
             {
-                LogPath("the Unity XR device");
+                loggedPath = true;
+                VRLog.Info("haptics: first pulse, SteamVR action " + (action ? "accepted" : "unavailable")
+                    + ", Unity XR " + (devices.Count == 0 ? "no controller device" : xr ? "accepted" : "refused (no haptic support)") + ".");
             }
         }
 
@@ -135,7 +138,7 @@ namespace UnturnedVR.VR
             lastFocus = item;
             if (item != null)
             {
-                Pulse(VRHands.Right, 0.3f, 0.04f, 180f);
+                Pulse(VRHands.Right, 0.5f, 0.08f, 160f);
             }
         }
     }

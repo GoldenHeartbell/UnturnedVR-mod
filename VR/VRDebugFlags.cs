@@ -24,14 +24,20 @@ namespace UnturnedVR.VR
         /// <summary>Logs the pointer state (hit, pixel, trigger) about once a second while it is active.</summary>
         public static bool LogPointer = false;
 
+        /// <summary>Draws the body holster zones (VRHolsters) as rings: yellow = has an item, green = held now, grey = empty.</summary>
+        public static bool HolsterMarkers = false;
+
+        /// <summary>Logs every grip press near the body with the zone it hit, and which slot is held (VRHolsters).</summary>
+        public static bool LogHolsters = false;
+
         /// <summary>Logs when aiming down the sights switches on and off, with the eye-to-sight distances (VRAds).</summary>
         public static bool LogAds = false;
 
         /// <summary>
         /// One line per shot: sight height over the bore, distance of the reticle point, bullet drop there, and how far
-        /// below the reticle the bullet ends up (VRShotProbe). On while the close-range offset is being measured.
+        /// below the reticle the bullet ends up (VRShotProbe). Measured once; the result is in docs/progress.md.
         /// </summary>
-        public static bool LogShotOffset = true;
+        public static bool LogShotOffset = false;
 
         /// <summary>VRGui pipeline report every 10 s (eye, panel, overlay camera, texture coverage via ReadPixels).</summary>
         public static bool LogGui = false;

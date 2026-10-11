@@ -65,6 +65,7 @@ namespace UnturnedVR.VR
         {
             Refresh();
             if (VRAttachMenu.KeyDown && key == ControlsSettings.attach) return true;
+            if (VRHolsters.KeyDown(key) || VRGestures.KeyDown(key)) return true;
             foreach (Entry e in entries)
             {
                 if (e.Down && e.Key() == key) return true;
@@ -95,8 +96,16 @@ namespace UnturnedVR.VR
             VRControllerInput.Refresh();
             bool uiOpen = VRPointer.Active || (PlayerUI.window != null && PlayerUI.window.showCursor);
 
-            VRHold.Update((VRControllerInput.LeftButtons & VRButton.Grip) != 0,
-                (VRControllerInput.RightButtons & VRButton.Grip) != 0, !uiOpen);
+            // Holster zones first: a grip press used to draw/holster is hidden from the grab logic and the game keys.
+            bool leftGrip = (VRControllerInput.LeftButtons & VRButton.Grip) != 0;
+            bool rightGrip = (VRControllerInput.RightButtons & VRButton.Grip) != 0;
+            VRHolsters.Update(leftGrip, rightGrip, uiOpen);
+            VRHold.Update(leftGrip && !VRHolsters.Consumed(false), rightGrip && !VRHolsters.Consumed(true), !uiOpen);
+
+            // Trigger gestures (night vision at the head, tactical with the second hand): the trigger press they use is
+            // hidden from the fire/aim entries below until released.
+            VRGestures.Update((VRControllerInput.LeftButtons & VRButton.Trigger) != 0,
+                (VRControllerInput.RightButtons & VRButton.Trigger) != 0, uiOpen);
 
             // Long press of B on the gun hand = attachment menu; a tap is delivered on release (see VRAttachMenu).
             VRAttachMenu.Update((VRControllerInput.LeftButtons & VRButton.B) != 0,
@@ -131,7 +140,11 @@ namespace UnturnedVR.VR
                 bool right = e.Role == 0 ? e.Right : (e.Role == 1) == primaryRight;
                 VRButton mask = right ? VRControllerInput.RightButtons : VRControllerInput.LeftButtons;
                 bool raw = (mask & e.Button) != 0 && (!e.UiOnly || uiOpen)
-                    && !(e.Button == VRButton.Grip && VRHold.Consumed(e.Right));
+                    && !(e.Button == VRButton.Grip && (VRHold.Consumed(e.Right) || VRHolsters.Consumed(e.Right)));
+                if (e.Button == VRButton.Trigger && VRGestures.TriggerConsumed(right))
+                {
+                    raw = false;
+                }
                 if (e.Button == VRButton.B && e.Role == 0)
                 {
                     int hand = e.Right ? VRHands.Right : VRHands.Left;

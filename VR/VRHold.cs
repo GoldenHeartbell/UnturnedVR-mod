@@ -40,10 +40,32 @@ namespace UnturnedVR.VR
         private static bool consumedLeft;
         private static bool consumedRight;
 
-        /// <summary>A new item was equipped (or none): it starts in its own hand again.</summary>
-        public static void Reset()
+        private const float RequestedHandSeconds = 3f;
+        private static int requestedHand = -1;
+        private static float requestedAt;
+
+        /// <summary>
+        /// The next item that appears goes to this hand (a holster zone was used with it): the equip takes a moment, so
+        /// the request is valid for a few seconds and is used up by the first new item model.
+        /// </summary>
+        public static void RequestHand(int hand)
+        {
+            requestedHand = hand;
+            requestedAt = Time.unscaledTime;
+        }
+
+        /// <summary>A new item was equipped (or none): it starts in its own hand again, or in the hand that drew it.</summary>
+        public static void Reset(bool hasItem)
         {
             HandOverride = -1;
+            if (hasItem && requestedHand >= 0)
+            {
+                if (Time.unscaledTime - requestedAt <= RequestedHandSeconds)
+                {
+                    HandOverride = requestedHand;
+                }
+                requestedHand = -1;
+            }
             Both = false;
             supportHold = false;
             Version++;

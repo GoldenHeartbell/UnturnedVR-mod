@@ -48,8 +48,16 @@ namespace UnturnedVR.VR
             int side = right ? 1 : 0;
             if (!Ready || hapticHandles[side] == 0)
             {
+                if (!loggedHapticMissing[side])
+                {
+                    loggedHapticMissing[side] = true;
+                    VRLog.Warn("SteamVR Input: no " + (right ? "right" : "left") + " haptic action handle (ready=" + Ready + "), rumble uses the XR fallback.");
+                }
                 return false;
             }
+
+            // Only for the log: does SteamVR report an origin (a binding) for the action? Not used to decide, because
+            // GetActionOrigins may not report output actions at all.
             if (Time.unscaledTime - hapticCheckedAt[side] > 3f)
             {
                 hapticCheckedAt[side] = Time.unscaledTime;
@@ -57,18 +65,31 @@ namespace UnturnedVR.VR
                 {
                     originBuffer[i] = 0;
                 }
-                bool bound = OpenVR.Input.GetActionOrigins(setHandle, hapticHandles[side], originBuffer) == EVRInputError.None
-                    && originBuffer[0] != 0;
-                if (bound != hapticBound[side])
+                EVRInputError originError = OpenVR.Input.GetActionOrigins(setHandle, hapticHandles[side], originBuffer);
+                bool bound = originError == EVRInputError.None && originBuffer[0] != 0;
+                if (bound != hapticBound[side] || !loggedHapticOrigins[side])
                 {
+                    loggedHapticOrigins[side] = true;
                     hapticBound[side] = bound;
-                    VRLog.Info("SteamVR Input: " + (right ? "right" : "left") + " haptic action is " + (bound ? "bound." : "NOT bound to the controller (rumble uses the XR fallback)."));
+                    VRLog.Info("SteamVR Input: " + (right ? "right" : "left") + " haptic action origins: "
+                        + (bound ? "bound" : "none reported (" + originError + ")")
+                        + ". If rumble never works, open SteamVR > Controller bindings > Unturned and reset to the default binding.");
                 }
             }
-            return hapticBound[side]
-                && OpenVR.Input.TriggerHapticVibrationAction(hapticHandles[side], 0f, seconds, frequency, amplitude,
-                    OpenVR.k_ulInvalidInputValueHandle) == EVRInputError.None;
+
+            EVRInputError error = OpenVR.Input.TriggerHapticVibrationAction(hapticHandles[side], 0f, seconds, frequency, amplitude,
+                OpenVR.k_ulInvalidInputValueHandle);
+            if (error != EVRInputError.None && !loggedHapticError[side])
+            {
+                loggedHapticError[side] = true;
+                VRLog.Warn("SteamVR Input: " + (right ? "right" : "left") + " haptic call failed (" + error + ").");
+            }
+            return error == EVRInputError.None;
         }
+
+        private static readonly bool[] loggedHapticMissing = new bool[2];
+        private static readonly bool[] loggedHapticOrigins = new bool[2];
+        private static readonly bool[] loggedHapticError = new bool[2];
 
         /// <summary>Registers the manifest once (first call after OpenVR is up) and refreshes the action state once per frame.</summary>
         public static void Update()
