@@ -15,6 +15,10 @@ namespace UnturnedVR.VR
     /// in degrees (positive = muzzle down). Names: pistol (inventory width up to 2), compact (3), rifle (4+), or
     /// "item 363" or "item &lt;guid&gt;" for one gun (modded guns may have a clashing or no numeric id, the GUID is
     /// unique). Item lines override classes. Lines starting with # are comments.
+    /// Two more optional numbers follow the pitch: yaw and roll in degrees ("name x y z pitch yaw roll"). Binoculars use the
+    /// class name "optic" (or "item &lt;id|guid&gt;"): "optic 0 0.07 0 0" lifts them 7 cm off the hand; the log prints id and guid.
+    /// "smooth optic 1 0.05" sets the hand-shake filter of the binoculars' view (minCutoff in Hz: lower = steadier, more lag;
+    /// beta: higher = less lag when sweeping); read when the binoculars are raised.
     /// Cost: one file timestamp check per equip.
     /// </summary>
     internal static class VRGunTuning
@@ -54,6 +58,7 @@ namespace UnturnedVR.VR
         private static readonly Dictionary<string, Pose> items = new Dictionary<string, Pose>();
         private static readonly Dictionary<string, Vector3> classSupports = new Dictionary<string, Vector3>();
         private static readonly Dictionary<string, Vector3> itemSupports = new Dictionary<string, Vector3>();
+        private static readonly Dictionary<string, Vector2> smooths = new Dictionary<string, Vector2>(); // x = minCutoff, y = beta (NaN = default)
         private static DateTime loadedStamp = DateTime.MinValue;
         private static string path;
 
@@ -84,9 +89,49 @@ namespace UnturnedVR.VR
             return pose;
         }
 
-        private static Pose Make(Vector3 offset, float pitch)
+        /// <summary>
+        /// Where a pair of binoculars sits relative to the controller: the model is moved off the hand so the hand
+        /// holds it from below instead of sticking through the lenses. "optic" is the class line in the file, "item
+        /// &lt;id|guid&gt;" overrides one item. Same file, same format; only the offset and rotation are used.
+        /// </summary>
+        public static Pose GetOptic(ItemOpticAsset optic, out string className)
         {
-            return new Pose { Offset = offset, Rotation = Quaternion.Euler(pitch, 0f, 0f) };
+            Reload();
+            className = "optic";
+            string guid = optic.GUID.ToString("N");
+            string id = optic.id != 0 ? optic.id.ToString() : null;
+            if (!(items.TryGetValue(guid, out Pose pose)
+                || (id != null && items.TryGetValue(id, out pose))
+                || classes.TryGetValue(className, out pose)))
+            {
+                // GUESS: the model origin sits in the middle of the binoculars, so lift it by about half its height.
+                pose = Make(new Vector3(0f, 0.07f, 0f), 0f);
+            }
+            return pose;
+        }
+
+        /// <summary>
+        /// Hand-shake filter numbers of one aiming feature ("optic", later "gun"): the file's "smooth &lt;name&gt; &lt;minCutoff&gt;
+        /// [beta]" line, else the given defaults. Read when the feature starts (a file check), not every frame.
+        /// </summary>
+        public static void GetSmoothing(string name, float defaultMinCutoff, float defaultBeta, out float minCutoff, out float beta)
+        {
+            Reload();
+            minCutoff = defaultMinCutoff;
+            beta = defaultBeta;
+            if (smooths.TryGetValue(name, out Vector2 value))
+            {
+                minCutoff = value.x;
+                if (!float.IsNaN(value.y))
+                {
+                    beta = value.y;
+                }
+            }
+        }
+
+        private static Pose Make(Vector3 offset, float pitch, float yaw = 0f, float roll = 0f)
+        {
+            return new Pose { Offset = offset, Rotation = Quaternion.Euler(pitch, yaw, roll) };
         }
 
         private static void Reload()
@@ -111,6 +156,7 @@ namespace UnturnedVR.VR
                 items.Clear();
                 classSupports.Clear();
                 itemSupports.Clear();
+                smooths.Clear();
                 foreach (string raw in File.ReadAllLines(path))
                 {
                     ParseLine(raw);
@@ -131,6 +177,24 @@ namespace UnturnedVR.VR
                 return;
             }
             string[] parts = line.Split((char[]) null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts[0].Equals("smooth", StringComparison.OrdinalIgnoreCase))
+            {
+                // "smooth <name> <minCutoff> [beta]": hand-shake filter (VRAimFilter) of one aiming feature, e.g. "optic".
+                if (parts.Length >= 3 && TryFloat(parts[2], out float minCutoff))
+                {
+                    float beta = float.NaN;
+                    if (parts.Length >= 4 && TryFloat(parts[3], out float parsedBeta))
+                    {
+                        beta = parsedBeta;
+                    }
+                    smooths[parts[1].ToLowerInvariant()] = new Vector2(minCutoff, beta);
+                }
+                else
+                {
+                    VRLog.Warn("gun: ignored line in " + FileName + ": " + line);
+                }
+                return;
+            }
             bool isSupport = parts[0].Equals("support", StringComparison.OrdinalIgnoreCase);
             if (isSupport)
             {
@@ -152,9 +216,19 @@ namespace UnturnedVR.VR
                 return;
             }
             float pitch = 0f;
+            float yaw = 0f;
+            float roll = 0f;
             if (parts.Length > first + 3)
             {
                 TryFloat(parts[first + 3], out pitch);
+            }
+            if (parts.Length > first + 4)
+            {
+                TryFloat(parts[first + 4], out yaw); // optional, mostly for binoculars: turn about the up axis
+            }
+            if (parts.Length > first + 5)
+            {
+                TryFloat(parts[first + 5], out roll); // optional: tilt about the forward axis
             }
 
             if (isSupport)
@@ -171,7 +245,7 @@ namespace UnturnedVR.VR
                 return;
             }
 
-            Pose pose = Make(new Vector3(x, y, z), pitch);
+            Pose pose = Make(new Vector3(x, y, z), pitch, yaw, roll);
             if (isItem)
             {
                 // A numeric id or a GUID (any common spelling, stored as 32 hex digits).

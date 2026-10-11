@@ -17,6 +17,7 @@ namespace UnturnedVR.VR
     internal static class VRGun
     {
         private static Transform cachedModel;
+        private static Transform warnedModel;
         private static Transform barrel;
         private static Attachments cachedAttachments;
         private static Vector3 localDirection = Vector3.up;
@@ -51,8 +52,68 @@ namespace UnturnedVR.VR
             {
                 return false;
             }
-            rotation = Quaternion.LookRotation(barrel.TransformDirection(localDirection));
+            rotation = Quaternion.LookRotation(SmoothDirection(barrel.TransformDirection(localDirection)));
             return true;
+        }
+
+        // Hand-shake smoothing of the barrel direction while aiming down the sights (VRAimFilter, same filter as the
+        // binoculars). Both the scope picture (VRAds.PlaceScopeCamera) and the shot direction (TryGetMuzzle) use the calmed
+        // direction, so they agree; the gun model and the sight itself stay 1:1 with the hand. Off while hip firing.
+        // "smooth gun <minCutoff Hz> [beta]" in gun-offsets.txt tunes it, a minCutoff of 0 switches it off; read when aiming starts.
+        private const float DefaultAimMinCutoff = 2f; // Hz, GUESS (shooting wants less lag than the binoculars)
+        private const float DefaultAimBeta = 0.1f;    // GUESS
+        private static readonly VRAimFilter aimFilter = new VRAimFilter();
+        private static bool aimWasAds;
+        private static bool aimFilterEnabled;
+        private static bool aimFilterOn;
+        private static Vector3 aimDirection = Vector3.forward;
+
+        /// <summary>The calmed barrel direction while aiming down the sights with smoothing on, else the raw one.</summary>
+        public static Vector3 SmoothDirection(Vector3 raw)
+        {
+            return aimFilterOn ? aimDirection : raw;
+        }
+
+        /// <summary>Once per frame from VRAds.Update, after the gun is placed. <paramref name="ads"/>: the sight is at the eye.</summary>
+        public static void UpdateAimFilter(bool ads)
+        {
+            Player player = Player.LocalPlayer;
+            if (!ads || player == null || !TryGetSightLine(player, out _, out Vector3 raw, out _))
+            {
+                aimWasAds = false;
+                aimFilterOn = false;
+                return;
+            }
+
+            if (!aimWasAds)
+            {
+                aimWasAds = true;
+                VRGunTuning.GetSmoothing("gun", DefaultAimMinCutoff, DefaultAimBeta, out float minCutoff, out float beta);
+                aimFilterEnabled = minCutoff > 0f;
+                aimFilter.MinCutoff = minCutoff;
+                aimFilter.Beta = beta;
+                aimFilter.Reset();
+                if (VRDebugFlags.LogAds)
+                {
+                    VRLog.Info("ads: aim smoothing " + (aimFilterEnabled ? minCutoff.ToString("0.##") + " Hz / beta " + beta.ToString("0.###") : "off") + ".");
+                }
+            }
+            if (!aimFilterEnabled)
+            {
+                aimFilterOn = false;
+                return;
+            }
+
+            // A scope magnifies the tremor: calmer the higher its zoom (read from the scope camera's field of view).
+            float zoom = 1f;
+            PlayerLook look = player.look;
+            if (look != null && look.isScopeActive && look.scopeCamera != null && look.scopeCamera.fieldOfView > 1f)
+            {
+                zoom = Mathf.Clamp(OptionsSettings.GetZoomBaseFieldOfView() / look.scopeCamera.fieldOfView, 1f, 20f);
+            }
+
+            aimDirection = aimFilter.Step(raw.normalized, Mathf.Min(Time.unscaledDeltaTime, 0.1f), 1f / Mathf.Sqrt(zoom));
+            aimFilterOn = true;
         }
 
         /// <summary>
@@ -109,17 +170,24 @@ namespace UnturnedVR.VR
 
         private static void Resolve(Transform model)
         {
-            cachedModel = model;
             barrel = null;
             cachedAttachments = null;
             Attachments attachments = model.GetComponent<Attachments>();
-            cachedAttachments = attachments;
             if (attachments == null || attachments.barrelHook == null)
             {
-                VRLog.Warn("gun: \"" + model.name + "\" has no Barrel hook, shots keep the head aim.");
+                // Not cached: the gun is posed on the hand as soon as it appears, which can be before its attachments
+                // are set up, so this is tried again on the next call. Said once per model.
+                cachedModel = null;
+                if (model != warnedModel)
+                {
+                    warnedModel = model;
+                    VRLog.Warn("gun: \"" + model.name + "\" has no Barrel hook (yet), shots keep the head aim until it appears.");
+                }
                 return;
             }
 
+            cachedModel = model;
+            cachedAttachments = attachments;
             barrel = attachments.barrelHook;
             Vector3 toBarrel = barrel.position - model.position;
             Vector3 local = barrel.InverseTransformDirection(toBarrel.sqrMagnitude > 0.0004f ? toBarrel.normalized : model.forward);

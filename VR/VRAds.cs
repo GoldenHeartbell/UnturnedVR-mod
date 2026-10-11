@@ -158,6 +158,7 @@ namespace UnturnedVR.VR
             }
 
             active = isActive;
+            VRGun.UpdateAimFilter(isActive && applies); // calms the barrel direction used by the scope picture and the shots
             if (isActive != wasActive)
             {
                 changed = true;
@@ -183,7 +184,7 @@ namespace UnturnedVR.VR
                 return;
             }
 
-            look.scopeCamera.transform.SetPositionAndRotation(point, Quaternion.LookRotation(direction, up));
+            look.scopeCamera.transform.SetPositionAndRotation(point, Quaternion.LookRotation(VRGun.SmoothDirection(direction), up));
 
             Transform model = player.equipment.firstModel;
             if (model != scopeWarnedModel)

@@ -80,6 +80,8 @@ namespace UnturnedVR.VR
         private float nextPointerLog;
         private Tap leftTap;
         private Tap rightTap;
+        private bool swallowLeftUp;
+        private bool swallowRightUp;
 
         public static void Create()
         {
@@ -142,6 +144,7 @@ namespace UnturnedVR.VR
             ButtonUp = leftTap.Up;
             RightButtonHeld = RightButtonDown = rightTap.Down;
             RightButtonUp = rightTap.Up;
+            SwallowRefocusClick();
             leftTap.Advance();
             rightTap.Advance();
             ScrollDelta = new Vector2(0f, stick.y * ScrollPerSecond * Time.unscaledDeltaTime);
@@ -164,6 +167,31 @@ namespace UnturnedVR.VR
             {
                 loggedHit = true;
                 VRLog.Info("first pointer hit at pixel " + pixel + " of " + Screen.width + "x" + Screen.height + ".");
+            }
+        }
+
+        // While the game window has no Windows focus (the player used the desktop) the UI ignores every event, so the first
+        // click on the menu takes the focus back instead and is not delivered: it cannot hit a button, and the release
+        // that follows is dropped too. If Windows refuses the focus the click goes through as before.
+        private void SwallowRefocusClick()
+        {
+            if (swallowLeftUp && leftTap.Up)
+            {
+                ButtonUp = false;
+                swallowLeftUp = false;
+            }
+            if (swallowRightUp && rightTap.Up)
+            {
+                RightButtonUp = false;
+                swallowRightUp = false;
+            }
+
+            if ((leftTap.Down || rightTap.Down) && VRFocus.Unfocused && VRFocus.RequestRefocus())
+            {
+                swallowLeftUp = leftTap.Down;
+                swallowRightUp = rightTap.Down;
+                ButtonHeld = ButtonDown = false;
+                RightButtonHeld = RightButtonDown = false;
             }
         }
 
@@ -211,6 +239,8 @@ namespace UnturnedVR.VR
         {
             leftTap.Reset(triggerHeld);
             rightTap.Reset(rightHeld);
+            swallowLeftUp = false;
+            swallowRightUp = false;
             HideLaser(); // every inactive frame, not just on the transition, so it can never stay behind in the world
             if (!Active)
             {

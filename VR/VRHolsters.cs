@@ -7,8 +7,9 @@ using UnityEngine;
 namespace UnturnedVR.VR
 {
     /// <summary>
-    /// Body holsters: the game's hotbar as zones on your body. Primary over the right shoulder, secondary at the right
-    /// hip, hotbar slots 3 and 4 on the left and right of the chest. Squeezing a grip with a hand inside a zone:
+    /// Body holsters: the game's hotbar as zones on your body. Primary over either shoulder (two zones, one slot, so
+    /// either hand can cross over to the far shoulder), secondary at the right hip, hotbar slots 3 and 4 on the left and
+    /// right of the chest. Squeezing a grip with a hand inside a zone:
     ///   - the item of that zone is held right now (or an item that belongs to no zone is held): it is holstered,
     ///   - the zone holds an item: it is drawn into the hand that squeezed (replaces what is held),
     ///   - the zone is empty: nothing (short rumble).
@@ -21,19 +22,24 @@ namespace UnturnedVR.VR
     /// </summary>
     internal static class VRHolsters
     {
-        private const int ZoneCount = 4;
+        private const int ZoneCount = 5;
         private const string FileName = "holsters.txt";
 
         // Hotbar button of each zone: 0 primary, 1 secondary, 2 and 3 = keys 3 and 4 (hotkeys[0], hotkeys[1]).
+        // The left shoulder is a second primary zone, so either hand can reach either shoulder (cross draw).
+        private static readonly int[] zoneSlot = { 0, 1, 2, 3, 0 };
+        private const int PrimaryLeftZone = 4;
         // Offsets in the body frame (x right, y up, z forward, metres, from the neck pivot). GUESSES, tune in headset.
         private static readonly Vector3[] defaultOffsets =
         {
-            new Vector3(0.20f, 0.10f, -0.15f),  // primary: over the right shoulder
+            new Vector3(0.20f, 0.16f, -0.15f),  // primary: over the right shoulder (raised 6 cm)
             new Vector3(0.30f, -0.30f, 0.00f),  // secondary: right hip (moved up 15 cm, then 5 cm to the right)
             new Vector3(-0.12f, -0.07f, 0.12f), // slot 3: left chest (moved up 15 cm)
             new Vector3(0.12f, -0.07f, 0.12f),  // slot 4: right chest
+            new Vector3(-0.20f, 0.16f, -0.15f), // primary again: over the left shoulder (mirror of the right one)
         };
-        private static readonly string[] names = { "primary", "secondary", "slot3", "slot4" };
+        private static readonly string[] names = { "primary", "secondary", "slot3", "slot4", "primaryleft" };
+        private static bool fileHasPrimaryLeft; // holsters.txt sets the left shoulder itself; otherwise it mirrors "primary"
         private const float DefaultRadius = 0.14f;
 
         private static readonly Vector3[] offsets = (Vector3[]) defaultOffsets.Clone();
@@ -163,7 +169,8 @@ namespace UnturnedVR.VR
                     zone = FindZone(anchor.position, head, yaw);
                 }
 
-                bool actionable = zone >= 0 && Actionable(zone, equippedSlot, equipment);
+                int slot = zone >= 0 ? zoneSlot[zone] : -1; // the hotbar button of the zone (both shoulders are slot 0)
+                bool actionable = zone >= 0 && Actionable(slot, equippedSlot, equipment);
                 if (zone != previousZone[hand] && actionable)
                 {
                     VRHaptics.Pulse(hand, TickAmplitude, 0.05f, 160f);
@@ -188,7 +195,7 @@ namespace UnturnedVR.VR
                 }
 
                 // Holster: this zone's item (or an item that has no zone of its own) is in a hand.
-                bool holdsHere = equippedSlot == zone || equippedSlot == UnzonedItem;
+                bool holdsHere = equippedSlot == slot || equippedSlot == UnzonedItem;
                 if (holdsHere)
                 {
                     downKey = ControlsSettings.dequip;
@@ -198,9 +205,9 @@ namespace UnturnedVR.VR
                     continue;
                 }
 
-                if (SlotHasItem(zone, equipment))
+                if (SlotHasItem(slot, equipment))
                 {
-                    downKey = ControlsSettings.getEquipmentHotbarKeyCode(zone);
+                    downKey = ControlsSettings.getEquipmentHotbarKeyCode(slot);
                     consumed[hand] = true;
                     VRHold.RequestHand(hand); // the drawing hand ends up holding it
                     VRHaptics.Pulse(hand, ActionAmplitude, 0.15f, 120f);
@@ -211,7 +218,7 @@ namespace UnturnedVR.VR
                 // An empty slot (nothing bound to this hotbar key): consume the press so it does not do something else.
                 consumed[hand] = true;
                 VRHaptics.Pulse(hand, EmptyAmplitude, 0.1f, 90f);
-                VRLog.Info("holsters: " + names[zone] + " zone is empty" + (zone >= 2 ? " (bind an item to hotbar key " + (zone + 1) + " in the inventory)." : "."));
+                VRLog.Info("holsters: " + names[zone] + " zone is empty" + (slot >= 2 ? " (bind an item to hotbar key " + (slot + 1) + " in the inventory)." : "."));
             }
         }
 
@@ -262,9 +269,9 @@ namespace UnturnedVR.VR
         }
 
         // A zone is worth a rumble when a grip there would do something.
-        private static bool Actionable(int zone, int equippedSlot, PlayerEquipment equipment)
+        private static bool Actionable(int slot, int equippedSlot, PlayerEquipment equipment)
         {
-            return equippedSlot == zone || equippedSlot == UnzonedItem || SlotHasItem(zone, equipment);
+            return equippedSlot == slot || equippedSlot == UnzonedItem || SlotHasItem(slot, equipment);
         }
 
         private static Vector3 ZoneCenter(int zone, Vector3 head, Quaternion yaw)
@@ -329,8 +336,8 @@ namespace UnturnedVR.VR
                 }
 
                 Color color = ear ? new Color(0.3f, 0.6f, 1f)
-                    : equippedSlot == zone ? new Color(0.2f, 1f, 0.3f)
-                    : SlotHasItem(zone, equipment) ? new Color(1f, 0.8f, 0.2f) : new Color(0.6f, 0.6f, 0.6f);
+                    : equippedSlot == zoneSlot[zone] ? new Color(0.2f, 1f, 0.3f)
+                    : SlotHasItem(zoneSlot[zone], equipment) ? new Color(1f, 0.8f, 0.2f) : new Color(0.6f, 0.6f, 0.6f);
                 line.startColor = color;
                 line.endColor = color;
                 Vector3 center = ear ? head + yaw * VRArms.NeckOffset + yaw * earOffsets[zone - ZoneCount] : ZoneCenter(zone, head, yaw);
@@ -381,8 +388,9 @@ namespace UnturnedVR.VR
                 {
                     File.WriteAllText(path,
                         "# Your own holster zone overrides. Empty = the mod's built-in values. Saved changes apply within a couple of seconds.\n" +
-                        "# <zone> x y z   zone = primary | secondary | slot3 | slot4; x right, y up, z forward in metres from the neck\n" +
-                        "# (about 28 cm under the eye), turned with your head's heading.\n" +
+                        "# <zone> x y z   zone = primary | primaryleft | secondary | slot3 | slot4; x right, y up, z forward in metres\n" +
+                        "# from the neck (about 28 cm under the eye), turned with your head's heading. primary and primaryleft are the\n" +
+                        "# two shoulders (same hotbar slot, either hand uses either); primaryleft mirrors primary unless you set it.\n" +
                         "# radius <metres>   how close the hand must be to a zone (default 0.14)\n" +
                         "# Examples (remove the # to use):\n" +
                         "# primary 0.22 0.12 -0.18\n" +
@@ -410,11 +418,11 @@ namespace UnturnedVR.VR
                 }
                 if (!hasSwitches)
                 {
-                    // A file made by an earlier version lacks the switches: add them (markers on while the zones are
-                    // tuned) and read it again on the next check.
+                    // A new file, or one made by an earlier version, lacks the switches: add them (markers off, a player
+                    // switches them on while tuning the zones) and read it again on the next check.
                     File.AppendAllText(path,
                         "\n# markers on|off    draw the zones as rings in the game (yellow = has an item, green = held, grey = empty)\n" +
-                        "markers on\n" +
+                        "markers off\n" +
                         "# log on|off        log every grip press near the body with the zone it hit\n" +
                         "# log on\n");
                     loadedStamp = DateTime.MinValue;
@@ -428,9 +436,16 @@ namespace UnturnedVR.VR
                 earHeight = DefaultEarHeight;
                 fileMarkers = false;
                 fileLog = false;
+                fileHasPrimaryLeft = false;
                 foreach (string raw in lines)
                 {
                     ParseLine(raw);
+                }
+                if (!fileHasPrimaryLeft)
+                {
+                    // The left shoulder mirrors a tuned right shoulder unless the file places it itself.
+                    Vector3 right = offsets[0];
+                    offsets[PrimaryLeftZone] = new Vector3(-right.x, right.y, right.z);
                 }
                 VRLog.Info("holsters: read " + FileName + " (radius " + radius.ToString("0.00", CultureInfo.InvariantCulture) + " m).");
             }
@@ -503,6 +518,10 @@ namespace UnturnedVR.VR
                         && TryFloat(parts[1], out float x) && TryFloat(parts[2], out float y) && TryFloat(parts[3], out float z))
                     {
                         offsets[zone] = new Vector3(x, y, z);
+                        if (zone == PrimaryLeftZone)
+                        {
+                            fileHasPrimaryLeft = true;
+                        }
                         return;
                     }
                 }

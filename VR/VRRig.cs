@@ -222,6 +222,26 @@ namespace UnturnedVR.VR
 
             VRHighlighting.Sync(from, to);
 
+            // The menu camera's mask and clear settings change between menu pages / loading.
+            int mask = from.cullingMask & ~(1 << Mathf.Max(VRGui.PanelLayer, 0));
+            if (VRGui.PanelLayer < 0)
+            {
+                mask = from.cullingMask;
+            }
+            if (VRArms.Active && !VRDebugFlags.PerfNoViewmodel)
+            {
+                mask |= 1 << LayerMasks.VIEWMODEL; // the arms/equipped item, drawn in the world by this camera
+            }
+            MirrorSettings(from, to, mask);
+        }
+
+        /// <summary>
+        /// Copies the settings the game applies to MainCamera only (render path, HDR, MSAA, clip planes, clear mode,
+        /// cull distances) onto another camera; setters only on change. <paramref name="mask"/> is the culling mask
+        /// the target should have. Used for the VR camera and for the binoculars' zoom camera (VRBinoculars).
+        /// </summary>
+        internal static void MirrorSettings(Camera from, Camera to, int mask)
+        {
             if (to.renderingPath != from.renderingPath)
             {
                 to.renderingPath = from.renderingPath;
@@ -234,16 +254,6 @@ namespace UnturnedVR.VR
             if (to.allowMSAA != from.allowMSAA)
             {
                 to.allowMSAA = from.allowMSAA;
-            }
-            // The menu camera's mask and clear settings change between menu pages / loading.
-            int mask = from.cullingMask & ~(1 << Mathf.Max(VRGui.PanelLayer, 0));
-            if (VRGui.PanelLayer < 0)
-            {
-                mask = from.cullingMask;
-            }
-            if (VRArms.Active && !VRDebugFlags.PerfNoViewmodel)
-            {
-                mask |= 1 << LayerMasks.VIEWMODEL; // the arms/equipped item, drawn in the world by this camera
             }
             if (to.cullingMask != mask)
             {
@@ -320,7 +330,7 @@ namespace UnturnedVR.VR
         // MainCamera carries a PostProcessLayer (deferred fog and the base lighting/post effects,
         // see UnturnedPostProcess.setBaseCamera); without a layer on the VR camera those effects
         // are missing. Global volumes still apply since the new layer uses the same volume layer.
-        private static void CopyPostProcessLayer(Camera from, Camera to)
+        internal static void CopyPostProcessLayer(Camera from, Camera to)
         {
             PostProcessLayer source = from.GetComponent<PostProcessLayer>();
             if (source == null || to.GetComponent<PostProcessLayer>() != null)

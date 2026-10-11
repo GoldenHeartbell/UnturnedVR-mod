@@ -7,9 +7,9 @@ namespace UnturnedVR.Patches
     /// <summary>
     /// Pickup/interact targeting. PlayerInteract.Update casts a single ray (4 m, first person) from
     /// MainCamera.instance's position along its forward, and MainCamera is disabled in VR and follows the
-    /// mouse-look aim. The prefix puts MainCamera's transform on the right hand (or the VR eye while that
-    /// controller is not tracked) for the duration of Update, so the ray, focus, outline and hint all use it;
-    /// the postfix puts it back.
+    /// mouse-look aim. The prefix puts MainCamera's transform on the interact hand (the one holding the item, the
+    /// right hand when nothing is held; the VR eye while that controller is not tracked) for the duration of
+    /// Update, so the ray, focus, outline and hint all use it; the postfix puts it back.
     /// </summary>
     [HarmonyPatch(typeof(PlayerInteract), "Update")]
     internal static class PlayerInteractHeadRayPatch
@@ -39,8 +39,9 @@ namespace UnturnedVR.Patches
             __state.Rotation = t.rotation;
 
             Transform source = eye.transform;
-            Transform hand = VR.VRHands.Anchor(VR.VRHands.Right);
-            if (hand != null && VR.VRHands.IsTracked(VR.VRHands.Right))
+            int handIndex = VR.VRKeyMap.InteractHand; // the holding hand: its grip is the one that picks up
+            Transform hand = VR.VRHands.Anchor(handIndex);
+            if (hand != null && VR.VRHands.IsTracked(handIndex))
             {
                 source = hand;
             }

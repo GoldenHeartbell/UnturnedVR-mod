@@ -5,7 +5,7 @@
     <AssemblyName>UnturnedVR</AssemblyName>
     <RootNamespace>UnturnedVR</RootNamespace>
     <!-- Keep in step with "Version" in install/Modules/UnturnedVR/UnturnedVR.module (that one has four parts). -->
-    <Version>0.2.0</Version>
+    <Version>0.2.2</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
 

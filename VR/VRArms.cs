@@ -104,7 +104,18 @@ namespace UnturnedVR.VR
         private const float TwoHandMinSpan = 0.08f;  // hands closer than this: no two-hand aim (m)
         private const float TwoHandFullSpan = 0.18f; // from here on the barrel points fully at the other hand
         private bool itemIsGun;
-        private bool aimBiasValid;      // two-handed aim: barrel direction relative to the hand-to-hand line, taken on grab
+        private bool itemIsOptic;      // binoculars: moved off the hand by opticPose
+        private VRGunTuning.Pose opticPose;
+        // The item is posed on its hand before the calibration wait is over, from the vanilla hold as it is animated
+        // right now, so it appears in its place (the drawing hand, the offset of binoculars or a gun) and does not jump
+        // there once the equip animation ends. The model's own local pose is remembered because posing it changes it
+        // (the hold must be sampled from the untouched pose).
+        private bool provisionalPending;   // a new model is equipped and calibration has not finished
+        private bool provisionalReady;     // itemToRoot holds a usable provisional value
+        private bool provisionalDriven;    // the model has been posed with it (its local pose was changed)
+        private Vector3 modelLocalPosition;
+        private Quaternion modelLocalRotation;
+        private bool aimBiasValid;     // two-handed aim: barrel direction relative to the hand-to-hand line, taken on grab
         private Vector3 aimBias;
         private bool hasSupport;       // the gun has a point for the second hand
         private Vector3 supportLocal;  // that point in the model's local space
@@ -251,6 +262,26 @@ namespace UnturnedVR.VR
             return true;
         }
 
+        /// <summary>
+        /// Poses the whole first-person rig for this frame: the arm root under the headset, both arms on the controllers,
+        /// and the equipped item on its hand. Everything that has to follow the final gun pose is also kicked off from
+        /// here (sight/scope, laser dot, attachment menu panel), because the gun is only in its place after this runs.
+        /// Called twice per frame, see <paramref name="allowCalibrate"/>:
+        /// LateUpdate (after the game's animation and PlayerLook have written their poses) and OnBeforeRender (again with the
+        /// freshest controller poses, so the hands do not lag a frame behind the headset).
+        /// Order of work: bail out when VR is not running / the rig is not resolved (<c>running</c> stays false), turn the
+        /// game's ViewmodelCamera off (the VR camera draws the viewmodel layer), put the root under the neck, pin Spine and
+        /// Skull to rest, (calibrate), drive both arms by IK, place the item, then the item-dependent systems.
+        /// </summary>
+        /// <param name="allowCalibrate">
+        /// True only for the LateUpdate call, false for OnBeforeRender. It gates the work that must run exactly once per
+        /// frame and may depend on the game's own animated state:
+        /// <see cref="TryCalibrate"/> (detects an item change, resets <see cref="VRHold"/>, and samples the item's
+        /// orientation relative to the root once the equip animation is over and the rig has left its T-pose) and
+        /// <see cref="VRAds.Update"/> (aim-down-sights decision, which has side effects such as the aim key and a rumble tick).
+        /// The before-render call skips both: it only re-poses arms and item from the state the LateUpdate call left, using
+        /// the already calibrated orientation.
+        /// </param>
         private void Apply(bool allowCalibrate)
         {
             running = false;
@@ -310,8 +341,10 @@ namespace UnturnedVR.VR
             if (allowCalibrate)
             {
                 VRAds.Update(); // once per frame, with the gun and the eye in their final pose
+                VRBinoculars.Update(); // same for binoculars: raised to the eyes or not
             }
             VRAds.PlaceScopeCamera();
+            VRBinoculars.PlaceCamera();
             VRLaser.Update(); // the laser dot follows the muzzle; the game placed it from the head earlier this frame
             VRAttachMenu.CachePanelPose(head.position); // the gun is in its final place now
 
@@ -338,9 +371,18 @@ namespace UnturnedVR.VR
                 modelChangedAt = Time.unscaledTime;
                 itemCalibrated = false;
                 loggedGiveUp = false;
+                itemIsGun = false; // the pose of the previous item must not apply while this one is not calibrated
+                itemIsOptic = false;
+                hasSupport = false;
+                provisionalReady = false;
+                provisionalDriven = false;
+                provisionalPending = false;
                 if (model != null)
                 {
                     itemBaseScale = model.localScale;
+                    modelLocalPosition = model.localPosition;
+                    modelLocalRotation = model.localRotation;
+                    provisionalPending = true;
                 }
             }
             if (itemCalibrated || model == null)
@@ -349,13 +391,42 @@ namespace UnturnedVR.VR
             }
 
             float waited = Time.unscaledTime - modelChangedAt;
+            bool inTPose = Mathf.Abs(root.InverseTransformPoint(left.Hook.position).x) > MaxSaneHookX
+                || Mathf.Abs(root.InverseTransformPoint(right.Hook.position).x) > MaxSaneHookX;
+
+            if (provisionalPending && !inTPose)
+            {
+                // Pose the item on its hand from now on, not only after the wait below: until then it would hang on the
+                // game's own (right) hand and jump to the other hand or to its offset when the wait ends. The hold is
+                // read from the model's own untouched pose, and the animation keeps changing it, so it is sampled every
+                // frame until the calibration below takes over.
+                if (provisionalDriven)
+                {
+                    model.SetLocalPositionAndRotation(modelLocalPosition, modelLocalRotation);
+                }
+                itemToRoot = Quaternion.Inverse(root.rotation) * model.rotation;
+                if (!provisionalReady)
+                {
+                    // The item's class pose is known from its asset; the second-hand point of a gun waits for calibration.
+                    if (player.equipment.asset is ItemOpticAsset provisionalOptic)
+                    {
+                        opticPose = VRGunTuning.GetOptic(provisionalOptic, out _);
+                        itemIsOptic = true;
+                    }
+                    else if (player.equipment.asset is ItemGunAsset provisionalGun)
+                    {
+                        gunPose = VRGunTuning.Get(provisionalGun, out _);
+                        itemIsGun = true;
+                    }
+                    provisionalReady = true;
+                }
+            }
+
             if (waited < MinCalibrateSeconds || player.equipment.isBusy)
             {
                 return;
             }
 
-            bool inTPose = Mathf.Abs(root.InverseTransformPoint(left.Hook.position).x) > MaxSaneHookX
-                || Mathf.Abs(root.InverseTransformPoint(right.Hook.position).x) > MaxSaneHookX;
             if (inTPose)
             {
                 if (waited > GiveUpSeconds && !loggedGiveUp)
@@ -366,10 +437,26 @@ namespace UnturnedVR.VR
                 return;
             }
 
+            if (provisionalDriven)
+            {
+                model.SetLocalPositionAndRotation(modelLocalPosition, modelLocalRotation); // sample the untouched pose
+                provisionalDriven = false;
+            }
             itemToRoot = Quaternion.Inverse(root.rotation) * model.rotation;
+            provisionalReady = false;
+            provisionalPending = false;
             itemIsGun = false;
+            itemIsOptic = false;
             VRPerf.LogModel(model);
-            if (player.equipment.asset is ItemGunAsset gunAsset)
+            if (player.equipment.asset is ItemOpticAsset opticAsset)
+            {
+                itemIsOptic = true;
+                opticPose = VRGunTuning.GetOptic(opticAsset, out string opticClass);
+                Vector3 euler = opticPose.Rotation.eulerAngles;
+                VRLog.Info("optic: \"" + model.name + "\" id " + opticAsset.id + " guid " + opticAsset.GUID.ToString("N") + ", class " + opticClass
+                    + ", offset " + opticPose.Offset + ", pitch/yaw/roll " + euler.x.ToString("0.#") + "/" + euler.y.ToString("0.#") + "/" + euler.z.ToString("0.#") + ".");
+            }
+            else if (player.equipment.asset is ItemGunAsset gunAsset)
             {
                 itemIsGun = true;
                 gunPose = VRGunTuning.Get(gunAsset, out string gunClass);
@@ -465,7 +552,7 @@ namespace UnturnedVR.VR
         {
             ItemHand = -1;
             SupportValid = false;
-            if (!itemCalibrated || lastModel == null || VRDebugFlags.PerfNoItemPose)
+            if ((!itemCalibrated && !provisionalReady) || lastModel == null || VRDebugFlags.PerfNoItemPose)
             {
                 return;
             }
@@ -553,6 +640,11 @@ namespace UnturnedVR.VR
                 rotation *= gunPose.Rotation;
                 aimFrame = rotation; // barrel along its forward axis
             }
+            else if (itemIsOptic)
+            {
+                position += rotation * opticPose.Offset; // off the hand, so the hand holds them from below
+                rotation *= opticPose.Rotation;
+            }
             rotation *= itemToRoot;
 
             // Someone grabbed or let go: glide from where the item was to its new place instead of jumping.
@@ -580,6 +672,10 @@ namespace UnturnedVR.VR
             lastItemPosition = position;
             lastItemRotation = rotation;
             lastModel.SetPositionAndRotation(position, rotation);
+            if (!itemCalibrated)
+            {
+                provisionalDriven = true; // TryCalibrate must put the local pose back before it samples the hold
+            }
             Vector3 scale = itemBaseScale / ArmScale;
             if (lastModel.localScale != scale)
             {

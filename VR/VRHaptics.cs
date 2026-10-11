@@ -138,7 +138,7 @@ namespace UnturnedVR.VR
             lastFocus = item;
             if (item != null)
             {
-                Pulse(VRHands.Right, 0.5f, 0.08f, 160f);
+                Pulse(VRKeyMap.InteractHand, 0.5f, 0.08f, 160f); // the hand that points (and whose grip picks up)
             }
         }
     }

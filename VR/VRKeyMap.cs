@@ -22,7 +22,15 @@ namespace UnturnedVR.VR
             public Func<KeyCode> Key;
             public bool AllowInUi;
             public bool UiOnly;
-            public int Role; // 1 = primary (use/fire) trigger, 2 = secondary (aim) trigger: the side follows the item's hand
+            // AllowInUi, but only while this returns true (a cursor UI that is meant to be driven from this button).
+            public Func<bool> AllowInUiWhen;
+            // A press that is already held when a cursor UI opens stays held while this returns true. For an item that locks
+            // the cursor with its own menu while the key is down (the housing planner's T menu), so the menu it opened does
+            // not release the key and close itself.
+            public Func<bool> KeepHeldInUi;
+            // 1 = primary (use/fire) trigger, 2 = secondary (aim) trigger, 3 = interact grip, 4 = fire mode grip: the side
+            // follows the item's hand (the holding hand fires and interacts, the free hand aims and switches fire mode)
+            public int Role;
 
             public bool Held;
             public bool Down;
@@ -35,11 +43,17 @@ namespace UnturnedVR.VR
         {
             new Entry { Right = false, Button = VRButton.Trigger,    Key = () => ControlsSettings.primary, Role = 1 },
             new Entry { Right = true,  Button = VRButton.Trigger,    Key = () => ControlsSettings.secondary, Role = 2 },
-            new Entry { Right = true,  Button = VRButton.Grip,       Key = () => ControlsSettings.interact },
-            new Entry { Right = false, Button = VRButton.Grip,       Key = () => ControlsSettings.firemode },
+            new Entry { Right = true,  Button = VRButton.Grip,       Key = () => ControlsSettings.interact, Role = 3 },
+            new Entry { Right = false, Button = VRButton.Grip,       Key = () => ControlsSettings.firemode, Role = 4 },
             new Entry { Right = true,  Button = VRButton.A,          Key = () => ControlsSettings.jump },
-            new Entry { Right = true,  Button = VRButton.B,          Key = () => ControlsSettings.reload },
-            new Entry { Right = false, Button = VRButton.A,          Key = () => ControlsSettings.crouch },
+            // Right B is reload with a gun (or nothing) in hand, the item's own attach key (T) for any other item, the lock in a
+            // vehicle, and the interact key (next page / skip) while an NPC dialogue is open. Left A (stance on foot, which
+            // does nothing in a seat) is the vehicle bonus (siren, tow hook, blimp float) in a vehicle. The fire mode grip
+            // stays, a passenger can hold a gun.
+            new Entry { Right = true,  Button = VRButton.B,          Key = RightBKey,
+                AllowInUiWhen = () => PlayerNPCDialogueUI.active,
+                KeepHeldInUi = () => itemUsesAttachKey && !inVehicle },
+            new Entry { Right = false, Button = VRButton.A,          Key = () => inVehicle ? ControlsSettings.other : StanceKey() },
             // Menus only: the game's "other" modifier, e.g. right-click on an inventory item = quick equip/dequip/move.
             new Entry { Right = true,  Button = VRButton.Grip,       Key = () => ControlsSettings.other, AllowInUi = true, UiOnly = true },
             new Entry { Right = false, Button = VRButton.B,          Key = () => KeyCode.Escape, AllowInUi = true },
@@ -47,8 +61,41 @@ namespace UnturnedVR.VR
             new Entry { Right = true,  Button = VRButton.StickClick, Key = () => ControlsSettings.inventory, AllowInUi = true },
         };
 
+        // Left A: the game's own stance key. PlayerStance.Update reads it as tap (< 0.33 s) = toggle crouch / stand and hold =
+        // prone, the same tap / long press split as B. It only acts while crouching and proning are in Toggle mode (the
+        // default): in Hold mode PlayerStance resets the wish from the crouch / prone keys every frame. There, and when the
+        // stance key is unbound, fall back to the crouch key (held while A is held, no prone).
+        private static KeyCode StanceKey()
+        {
+            bool toggles = ControlsSettings.crouching == EControlMode.TOGGLE && ControlsSettings.proning == EControlMode.TOGGLE;
+            return toggles && ControlsSettings.stance != KeyCode.None ? ControlsSettings.stance : ControlsSettings.crouch;
+        }
+
+        // The game's attach key (T by default) is read by guns (attachment mode, handled by VRAttachMenu) and by other items
+        // such as the housing planner (hold it to open the item menu). Guns and melee weapons keep B as reload; any other
+        // equipped item gets the attach key on B.
+        private static KeyCode RightBKey()
+        {
+            // The dialogue screen advances a page / skips on the interact key (PlayerInteract: key up while a cursor UI is open).
+            if (PlayerNPCDialogueUI.active)
+            {
+                return ControlsSettings.interact;
+            }
+            if (inVehicle)
+            {
+                return ControlsSettings.locker;
+            }
+            return itemUsesAttachKey ? ControlsSettings.attach : ControlsSettings.reload;
+        }
+
         private static int lastFrame = -1;
+        private static bool itemUsesAttachKey; // an item that is not a gun or melee weapon is equipped, set per frame
         private static bool primaryRight; // the use/fire trigger is on the right controller
+        private static bool interactRight = true; // the interact grip is on the right controller (fire mode on the other)
+        private static bool inVehicle; // the local player sits in a vehicle (any seat, like the game's own vehicle keys), set per frame
+
+        /// <summary>The hand whose grip interacts (and whose aim ray picks up): the holding hand, the right one when nothing is held.</summary>
+        public static int InteractHand => interactRight ? VRHands.Right : VRHands.Left;
 
         public static bool GetKey(KeyCode key)
         {
@@ -93,6 +140,11 @@ namespace UnturnedVR.VR
             lastFrame = Time.frameCount;
             long perfStart = VRPerf.Begin();
 
+            Player localPlayer = Player.LocalPlayer;
+            inVehicle = localPlayer != null && localPlayer.movement != null && localPlayer.movement.getVehicle() != null;
+            Useable useable = localPlayer != null && localPlayer.equipment != null ? localPlayer.equipment.useable : null;
+            itemUsesAttachKey = useable != null && !(useable is UseableGun) && !(useable is UseableMelee);
+
             VRControllerInput.Refresh();
             bool uiOpen = VRPointer.Active || (PlayerUI.window != null && PlayerUI.window.showCursor);
 
@@ -113,10 +165,14 @@ namespace UnturnedVR.VR
 
             // Fire/use is on the trigger of the hand that holds the item (the trigger hand of a two-handed gun); the
             // other trigger is the secondary (aim). Nothing held: left fires. Only switched while no trigger is down.
-            if (((VRControllerInput.LeftButtons | VRControllerInput.RightButtons) & VRButton.Trigger) == 0)
+            // The grips follow the same rule: the holding hand interacts (the right hand when nothing is held), the free hand
+            // switches the fire mode, so a gun in the left hand behaves like one in the right. Switched only while no trigger
+            // or grip is down, so a held button never changes meaning.
+            if (((VRControllerInput.LeftButtons | VRControllerInput.RightButtons) & (VRButton.Trigger | VRButton.Grip)) == 0)
             {
                 int itemHand = VRArms.ItemHand;
                 primaryRight = itemHand >= 0 && itemHand == VRHands.Right;
+                interactRight = itemHand < 0 || itemHand == VRHands.Right;
             }
 
             // Aiming down the sights: for a gun with a sight reference the aim "key" is the sight at the eye, not the
@@ -124,12 +180,18 @@ namespace UnturnedVR.VR
             // key presses, so there it gets one press when the sight arrives and one when it leaves.
             bool toggleAim = ControlsSettings.aiming == EControlMode.TOGGLE;
 
+            // Binoculars work the same way: the game's zoom (secondary) follows the item being held up to the eyes.
+            bool gunAds = VRAds.Applies;
+            bool eyeAim = gunAds || VRBinoculars.Applies;
+            bool eyeActive = gunAds ? VRAds.Active : VRBinoculars.Active;
+            bool eyeChanged = gunAds ? VRAds.Changed : VRBinoculars.Changed;
+
             foreach (Entry e in entries)
             {
-                if (e.Role == 2 && VRAds.Applies)
+                if (e.Role == 2 && eyeAim)
                 {
-                    bool adsHeld = !toggleAim && VRAds.Active;
-                    bool adsDown = toggleAim ? VRAds.Changed : adsHeld && !e.Held;
+                    bool adsHeld = !toggleAim && eyeActive;
+                    bool adsDown = toggleAim ? eyeChanged : adsHeld && !e.Held;
                     e.Down = adsDown;
                     e.Up = !toggleAim && !adsHeld && e.Held;
                     e.Held = adsHeld;
@@ -137,10 +199,18 @@ namespace UnturnedVR.VR
                     continue;
                 }
 
-                bool right = e.Role == 0 ? e.Right : (e.Role == 1) == primaryRight;
+                bool right;
+                switch (e.Role)
+                {
+                    case 1: right = primaryRight; break;
+                    case 2: right = !primaryRight; break;
+                    case 3: right = interactRight; break;
+                    case 4: right = !interactRight; break;
+                    default: right = e.Right; break;
+                }
                 VRButton mask = right ? VRControllerInput.RightButtons : VRControllerInput.LeftButtons;
                 bool raw = (mask & e.Button) != 0 && (!e.UiOnly || uiOpen)
-                    && !(e.Button == VRButton.Grip && (VRHold.Consumed(e.Right) || VRHolsters.Consumed(e.Right)));
+                    && !(e.Button == VRButton.Grip && (VRHold.Consumed(right) || VRHolsters.Consumed(right)));
                 if (e.Button == VRButton.Trigger && VRGestures.TriggerConsumed(right))
                 {
                     raw = false;
@@ -158,7 +228,8 @@ namespace UnturnedVR.VR
                 {
                     e.Latched = false;
                 }
-                else if (uiOpen && !e.AllowInUi)
+                else if (uiOpen && !e.AllowInUi && !(e.AllowInUiWhen != null && e.AllowInUiWhen())
+                    && !(e.Held && e.KeepHeldInUi != null && e.KeepHeldInUi()))
                 {
                     e.Latched = true;
                 }
@@ -169,6 +240,7 @@ namespace UnturnedVR.VR
                 e.Held = held;
             }
             VRAds.AcknowledgeChange();
+            VRBinoculars.AcknowledgeChange();
             VRPerf.End(VRPerf.KeyMap, perfStart);
         }
     }

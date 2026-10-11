@@ -24,6 +24,10 @@ namespace UnturnedVR.VR
         private const float MenuPanelDistance = 2.2f;
         private const float MenuPanelWidth = 3.6f;
         private const float MenuReanchorDistance = 1.5f;
+        // NPC dialogue, quest and vendor screens: pinned like the menu, but close (about the hint panel's distance) and
+        // with the same apparent size (1.6 m at 1 m ~ 3.6 m at 2.2 m). Guesses to tune in-headset.
+        private const float NpcPanelDistance = 1.0f;
+        private const float NpcPanelWidth = 1.6f;
         // Loading screen: how long to wait for the first head pose before placing the panel anyway
         // (the editor's session may never deliver one).
         private const float LoadingPoseWaitSeconds = 3f;
@@ -34,6 +38,15 @@ namespace UnturnedVR.VR
         private const float HintDistance = 1.0f;
         private const float HintHeight = -0.12f;
         private const float HintScale = 1.5f;
+        // A hint about an object hangs above it in the world; one without an object keeps a spot in front of the body
+        // (HintDistance / HintHeight) that only moves when you turn far away or walk off. Guesses to tune in-headset.
+        private const float HintLift = 0.15f;              // gap between the top of the object and the label's centre
+        private const float HintMaxAbove = 0.9f;           // never higher than this above the object's pivot
+        private const float HintMinViewDistance = 0.6f;    // the label is scaled with its distance, between these two
+        private const float HintMaxViewDistance = 3f;
+        private const float HintDeadzoneDegrees = 40f;     // untargeted: head turned this far from the label = bring it back
+        private const float HintFreeMaxDistance = 2.5f;    // untargeted: walked this far from the label = bring it back
+        private const float HintFollowSharpness = 4f;
 
         /// <summary>Layer the GUI panel lives on, or -1 before it is chosen.</summary>
         public static int PanelLayer { get; private set; } = -1;
@@ -114,6 +127,12 @@ namespace UnturnedVR.VR
         private Mesh hintMesh;
         private bool hintShown;
         private Rect hintShownRect;
+        private Vector3 hintBaseScale = Vector3.one; // panel size at HintDistance
+        private Transform hintTarget;                // object the panel hangs above, null = free spot
+        private Vector3 hintTargetOffset;            // anchor relative to the object's pivot (world axes)
+        private bool hintFree;                       // free spot is placed
+        private Vector3 hintFreeLocal;               // free spot in rig space (moves with the body, not with the head)
+        private bool hintRecentering;
         private bool loggedHint;
         private RenderTexture uiTexture;
         private Camera overlayCamera;
@@ -128,6 +147,7 @@ namespace UnturnedVR.VR
         private bool needsRecenter = true;
         private bool standalone;
         private bool menuLayout = true;
+        private bool npcLayout; // menu layout, but for a conversation screen: nearer and smaller
         private bool menuPoseValid;
         private bool hadHeadPose = true;
         private bool menuRailed;
@@ -323,7 +343,14 @@ namespace UnturnedVR.VR
         private void UpdateHint(Transform eye)
         {
             Rect hintRect = default;
-            bool show = eye != null && !menuLayout && TryGetHintRect(out hintRect);
+            bool show = eye != null && !menuLayout && !VRBinoculars.LensVisible && TryGetHintRect(out hintRect);
+
+            if (show != hintShown)
+            {
+                hintTarget = null;
+                hintFree = false;
+                hintRecentering = false;
+            }
 
             if (show != hintShown || (show && hintRect != hintShownRect))
             {
@@ -350,9 +377,99 @@ namespace UnturnedVR.VR
             }
             if (show)
             {
-                hintPanel.position = eye.TransformPoint(0f, HintHeight, HintDistance);
-                hintPanel.rotation = eye.rotation;
+                PlaceHintPanel(eye);
             }
+        }
+
+        /// <summary>
+        /// Places the hint panel. A hint about an object (pickup, door, vehicle...) hangs above that object in the world,
+        /// turned towards the eye, so head movement does not move it. Other messages (reload, safety, xp...) get a spot in
+        /// front of you, kept in rig space: it follows walking and body turns but not head movement, and comes back to
+        /// the front when you look far away from it. The panel is scaled with its distance so it keeps a readable size.
+        /// </summary>
+        private void PlaceHintPanel(Transform eye)
+        {
+            Vector3 eyePosition = eye.position;
+            Vector3 position;
+
+            Transform target = UnturnedVR.Patches.PlayerUIHintPatch.CurrentTarget;
+            if (target != null)
+            {
+                if (target != hintTarget)
+                {
+                    hintTarget = target;
+                    hintTargetOffset = ComputeHintOffset(target);
+                    if (VRDebugFlags.LogGui)
+                    {
+                        VRLog.Info("hint panel: hangs above \"" + target.name + "\" (offset " + hintTargetOffset + ").");
+                    }
+                }
+                position = target.position + hintTargetOffset;
+                hintFree = false;
+            }
+            else
+            {
+                hintTarget = null;
+                Transform rig = VRRig.RigTransform;
+                Vector3 desired = FreeHintPosition(eye, rig);
+                if (!hintFree)
+                {
+                    hintFree = true;
+                    hintRecentering = false;
+                    hintFreeLocal = rig != null ? rig.InverseTransformPoint(desired) : desired;
+                }
+
+                position = rig != null ? rig.TransformPoint(hintFreeLocal) : hintFreeLocal;
+                Vector3 toHint = position - eyePosition;
+                if (Vector3.Angle(eye.forward, toHint) > HintDeadzoneDegrees || toHint.sqrMagnitude > HintFreeMaxDistance * HintFreeMaxDistance)
+                {
+                    hintRecentering = true;
+                }
+                if (hintRecentering)
+                {
+                    position = Vector3.Lerp(position, desired, 1f - Mathf.Exp(-HintFollowSharpness * Time.unscaledDeltaTime));
+                    hintFreeLocal = rig != null ? rig.InverseTransformPoint(position) : position;
+                    if (Vector3.Angle(eye.forward, position - eyePosition) < 8f && (position - desired).sqrMagnitude < 0.01f)
+                    {
+                        hintRecentering = false;
+                    }
+                }
+            }
+
+            Vector3 fromEye = position - eyePosition;
+            float distance = fromEye.magnitude;
+            hintPanel.position = position;
+            hintPanel.rotation = distance > 0.01f ? Quaternion.LookRotation(fromEye / distance, Vector3.up) : eye.rotation;
+            hintPanel.localScale = hintBaseScale * (Mathf.Clamp(distance, HintMinViewDistance, HintMaxViewDistance) / HintDistance);
+        }
+
+        // Where the untargeted hint sits when it is (re)placed: HintDistance ahead along the head heading, HintHeight below the eye.
+        private static Vector3 FreeHintPosition(Transform eye, Transform rig)
+        {
+            Vector3 forward = Vector3.ProjectOnPlane(eye.forward, Vector3.up);
+            if (forward.sqrMagnitude < 0.01f)
+            {
+                forward = rig != null ? Vector3.ProjectOnPlane(rig.forward, Vector3.up) : Vector3.forward;
+            }
+            return eye.position + forward.normalized * HintDistance + Vector3.up * HintHeight;
+        }
+
+        // Anchor above the object: over the top of its solid colliders (at most HintMaxAbove over its pivot), as an offset
+        // from the pivot so it follows the object when it moves. Done once per target change.
+        private static Vector3 ComputeHintOffset(Transform target)
+        {
+            Vector3 pivot = target.position;
+            Bounds bounds = new Bounds(pivot, Vector3.zero);
+            foreach (Collider collider in target.GetComponentsInChildren<Collider>())
+            {
+                if (collider.enabled && !collider.isTrigger)
+                {
+                    bounds.Encapsulate(collider.bounds);
+                }
+            }
+
+            float top = Mathf.Clamp(bounds.max.y, pivot.y + 0.1f, pivot.y + HintMaxAbove);
+            return new Vector3(bounds.center.x - pivot.x, top + HintLift - pivot.y, bounds.center.z - pivot.z);
         }
 
         private void ApplyHintGeometry(Rect rect)
@@ -383,10 +500,11 @@ namespace UnturnedVR.VR
             hintMesh.uv = new[] { new Vector2(u0, v0), new Vector2(u1, v0), new Vector2(u0, v1), new Vector2(u1, v1) };
             float aspect = (float)uiTexture.width / uiTexture.height;
             float scale = PanelWidth * (HintDistance / PanelDistance) * HintScale;
-            hintPanel.localScale = new Vector3(
+            hintBaseScale = new Vector3(
                 (u1 - u0) * scale,
                 (v1 - v0) * scale / aspect,
                 1f);
+            hintPanel.localScale = hintBaseScale;
         }
 
         // Adds the rectangle (u0,v0)-(u1,v1) of the unit quad, UVs equal to the position in the texture.
@@ -654,7 +772,7 @@ namespace UnturnedVR.VR
         private void ResizePanel()
         {
             float aspect = (float)uiTexture.width / uiTexture.height;
-            float width = menuLayout ? MenuPanelWidth : PanelWidth;
+            float width = menuLayout ? (npcLayout ? NpcPanelWidth : MenuPanelWidth) : PanelWidth;
             panel.localScale = new Vector3(width, width / aspect, 1f);
         }
 
@@ -693,11 +811,19 @@ namespace UnturnedVR.VR
             // Also while a cursor UI (inventory, pause, dialogues) is open: you point at it, so it must hold still.
             bool cursorUiOpen = PlayerUI.window != null && PlayerUI.window.showCursor;
             bool wantMenuLayout = VRRig.InMenu || VRRig.ActiveCamera == null || cursorUiOpen;
-            if (wantMenuLayout != menuLayout)
+            // A conversation with an NPC (dialogue, quest offer, shop) is a cursor UI too, but it is placed close in front
+            // of you when it opens, like a hint, and then stays put.
+            bool wantNpcLayout = wantMenuLayout && (PlayerNPCDialogueUI.active || PlayerNPCQuestUI.active || PlayerNPCVendorUI.active);
+            if (wantMenuLayout != menuLayout || wantNpcLayout != npcLayout)
             {
                 menuLayout = wantMenuLayout;
+                npcLayout = wantNpcLayout;
                 needsRecenter = true;
                 ResizePanel();
+                if (npcLayout)
+                {
+                    VRLog.Info("gui: conversation screen, panel at " + NpcPanelDistance.ToString("0.0#") + " m.");
+                }
             }
 
             if (menuLayout)
@@ -718,6 +844,7 @@ namespace UnturnedVR.VR
             // Place from the camera's forward even without a head pose (the editor's OpenXR session often
             // never delivers one); otherwise the panel stays where it was and the rig faces away from it.
             // Re-place once the first pose arrives, since that changes the view direction and height.
+            float distance = npcLayout ? NpcPanelDistance : MenuPanelDistance;
             bool hasPose = standalone ? loadingHead.localPosition != Vector3.zero
                 : VRRig.ActiveCamera == null || VRRig.HasHeadPose;
             if (hasPose && !hadHeadPose)
@@ -752,7 +879,7 @@ namespace UnturnedVR.VR
                     }
 
                     menuLocalRotation = Quaternion.LookRotation(localForward.normalized, Vector3.up);
-                    menuLocalPosition = rig.InverseTransformPoint(eye.position) + menuLocalRotation * Vector3.forward * MenuPanelDistance;
+                    menuLocalPosition = rig.InverseTransformPoint(eye.position) + menuLocalRotation * Vector3.forward * distance;
                     menuPoseValid = true;
                     needsRecenter = false;
                 }
@@ -774,7 +901,7 @@ namespace UnturnedVR.VR
                 }
 
                 Quaternion rotation = Quaternion.LookRotation(forward.normalized, Vector3.up);
-                menuPanelPosition = eye.position + rotation * Vector3.forward * MenuPanelDistance;
+                menuPanelPosition = eye.position + rotation * Vector3.forward * distance;
                 menuPanelRotation = rotation;
                 menuEyeAnchor = eye.position;
                 menuPoseValid = true;
@@ -812,7 +939,8 @@ namespace UnturnedVR.VR
         private void SetPanelVisible(bool visible)
         {
             // The big panel makes way for the attachment menu panel on the gun.
-            bool bigVisible = visible && !attachShown;
+            // The binoculars lens replaces the HUD (the game hides it and shows its flat mask, which would float at 2 m).
+            bool bigVisible = visible && !attachShown && !VRBinoculars.LensVisible;
             if (panel != null && panel.gameObject.activeSelf != bigVisible)
             {
                 panel.gameObject.SetActive(bigVisible);
