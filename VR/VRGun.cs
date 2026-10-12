@@ -1,3 +1,4 @@
+using HarmonyLib;
 using SDG.Unturned;
 using UnityEngine;
 
@@ -60,8 +61,14 @@ namespace UnturnedVR.VR
         // binoculars). Both the scope picture (VRAds.PlaceScopeCamera) and the shot direction (TryGetMuzzle) use the calmed
         // direction, so they agree; the gun model and the sight itself stay 1:1 with the hand. Off while hip firing.
         // "smooth gun <minCutoff Hz> [beta]" in gun-offsets.txt tunes it, a minCutoff of 0 switches it off; read when aiming starts.
-        private const float DefaultAimMinCutoff = 2f; // Hz, GUESS (shooting wants less lag than the binoculars)
+        private const float DefaultAimMinCutoff = 3f; // Hz, GUESS (shooting wants less lag than the binoculars; holding breath calms it)
         private const float DefaultAimBeta = 0.1f;    // GUESS
+        // Hold breath (the game's steady aim, left stick click = sprint key): the cut-off is scaled down to this fraction at the
+        // full hold. GUESS. The game's own sway is not used in VR (the shot comes from the muzzle), so this is where it counts.
+        private const float SteadyCutoffScale = 0.25f;
+        private const float SteadyAccuracyMax = 4f; // UseableGun.steadyAccuracy ramps 0..4
+        private static AccessTools.FieldRef<UseableGun, uint> steadyAccuracyField;
+        private static bool steadyAccuracyLookedUp;
         private static readonly VRAimFilter aimFilter = new VRAimFilter();
         private static bool aimWasAds;
         private static bool aimFilterEnabled;
@@ -112,8 +119,40 @@ namespace UnturnedVR.VR
                 zoom = Mathf.Clamp(OptionsSettings.GetZoomBaseFieldOfView() / look.scopeCamera.fieldOfView, 1f, 20f);
             }
 
-            aimDirection = aimFilter.Step(raw.normalized, Mathf.Min(Time.unscaledDeltaTime, 0.1f), 1f / Mathf.Sqrt(zoom));
+            float steady = Mathf.Clamp01(SteadyAccuracy(player) / SteadyAccuracyMax);
+            float cutoffScale = Mathf.Lerp(1f, SteadyCutoffScale, steady) / Mathf.Sqrt(zoom);
+            aimDirection = aimFilter.Step(raw.normalized, Mathf.Min(Time.unscaledDeltaTime, 0.1f), cutoffScale);
             aimFilterOn = true;
+        }
+
+        /// <summary>
+        /// The equipped gun's sight is one the game lets you steady with a held breath (zoom above 2, the same test as
+        /// UseableGun.simulate). Needs the gun to be resolved first (any TryGetSightLine call does that).
+        /// </summary>
+        public static bool HasSteadySight =>
+            cachedAttachments != null && cachedAttachments.sightAsset != null && cachedAttachments.sightAsset.zoom > 2f;
+
+        /// <summary>
+        /// The game's hold-breath ramp of the equipped gun (UseableGun.steadyAccuracy, 0..4): only rises while aiming through a
+        /// scope with breath left and the sprint key held, so the game's own rules (and the breath drain) apply.
+        /// </summary>
+        private static float SteadyAccuracy(Player player)
+        {
+            if (!steadyAccuracyLookedUp)
+            {
+                steadyAccuracyLookedUp = true;
+                try
+                {
+                    steadyAccuracyField = AccessTools.FieldRefAccess<UseableGun, uint>("steadyAccuracy");
+                }
+                catch (System.Exception e)
+                {
+                    VRLog.Warn("hold breath: UseableGun.steadyAccuracy not found, aim stays unchanged (" + e.Message + ").");
+                }
+            }
+
+            UseableGun gun = player.equipment != null ? player.equipment.useable as UseableGun : null;
+            return gun != null && steadyAccuracyField != null ? steadyAccuracyField(gun) : 0f;
         }
 
         /// <summary>

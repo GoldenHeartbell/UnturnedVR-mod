@@ -30,12 +30,15 @@ namespace UnturnedVR.VR
             public Func<bool> KeepHeldInUi;
             // 1 = primary (use/fire) trigger, 2 = secondary (aim) trigger, 3 = interact grip, 4 = fire mode grip: the side
             // follows the item's hand (the holding hand fires and interacts, the free hand aims and switches fire mode)
+            // 5 = hold breath: the same grip as 3, but only while a scope (zoom > 2) is at the eye; it then replaces interact
             public int Role;
 
             public bool Held;
             public bool Down;
             public bool Up;
             public bool Latched;
+            // Roles 3 / 5: whether this entry was the meaning of the grip last frame (see the latch in Refresh)
+            public bool ModeActive = true;
         }
 
         // Layout for Valve Index (see docs/progress.md). Hotbar flick on the right stick is phase 2.
@@ -45,6 +48,9 @@ namespace UnturnedVR.VR
             new Entry { Right = true,  Button = VRButton.Trigger,    Key = () => ControlsSettings.secondary, Role = 2 },
             new Entry { Right = true,  Button = VRButton.Grip,       Key = () => ControlsSettings.interact, Role = 3 },
             new Entry { Right = false, Button = VRButton.Grip,       Key = () => ControlsSettings.firemode, Role = 4 },
+            // Hold breath: the game's steady aim is the sprint key. While a scope is at the eye the gun hand's grip is that key
+            // (the interact grip above is switched off for the same time); left stick click does the same as before.
+            new Entry { Right = true,  Button = VRButton.Grip,       Key = () => ControlsSettings.sprint, Role = 5 },
             new Entry { Right = true,  Button = VRButton.A,          Key = () => ControlsSettings.jump },
             // Right B is reload with a gun (or nothing) in hand, the item's own attach key (T) for any other item, the lock in a
             // vehicle, and the interact key (next page / skip) while an NPC dialogue is open. Left A (stance on foot, which
@@ -148,10 +154,16 @@ namespace UnturnedVR.VR
             VRControllerInput.Refresh();
             bool uiOpen = VRPointer.Active || (PlayerUI.window != null && PlayerUI.window.showCursor);
 
+            // A scope with zoom above 2 at the eye: the gun hand's grip holds the breath instead of interacting. That grip is
+            // then used for nothing else: not by the holster zones (no holstering when the hand is near the body), not by
+            // interact (pickup, doors, vehicles), see the Role 3 / 5 entries below.
+            bool holdBreathGrip = VRAds.Active && VRGun.HasSteadySight;
+            int breathHand = holdBreathGrip ? (interactRight ? VRHands.Right : VRHands.Left) : -1;
+
             // Holster zones first: a grip press used to draw/holster is hidden from the grab logic and the game keys.
             bool leftGrip = (VRControllerInput.LeftButtons & VRButton.Grip) != 0;
             bool rightGrip = (VRControllerInput.RightButtons & VRButton.Grip) != 0;
-            VRHolsters.Update(leftGrip, rightGrip, uiOpen);
+            VRHolsters.Update(leftGrip, rightGrip, uiOpen, breathHand);
             VRHold.Update(leftGrip && !VRHolsters.Consumed(false), rightGrip && !VRHolsters.Consumed(true), !uiOpen);
 
             // Trigger gestures (night vision at the head, tactical with the second hand): the trigger press they use is
@@ -206,6 +218,7 @@ namespace UnturnedVR.VR
                     case 2: right = !primaryRight; break;
                     case 3: right = interactRight; break;
                     case 4: right = !interactRight; break;
+                    case 5: right = interactRight; break;
                     default: right = e.Right; break;
                 }
                 VRButton mask = right ? VRControllerInput.RightButtons : VRControllerInput.LeftButtons;
@@ -214,6 +227,22 @@ namespace UnturnedVR.VR
                 if (e.Button == VRButton.Trigger && VRGestures.TriggerConsumed(right))
                 {
                     raw = false;
+                }
+                if (e.Role == 3 || e.Role == 5)
+                {
+                    // The grip is either interact or hold breath, never both. A grip that is already down when the meaning
+                    // switches (scope raised or lowered while squeezing) stays dead until released, so lowering the gun
+                    // does not turn the breath squeeze into an interact (pickup, vehicle) and raising it does not start a hold.
+                    bool active = (e.Role == 5) == holdBreathGrip;
+                    if (!active)
+                    {
+                        raw = false;
+                    }
+                    else if (!e.ModeActive && raw)
+                    {
+                        e.Latched = true;
+                    }
+                    e.ModeActive = active;
                 }
                 if (e.Button == VRButton.B && e.Role == 0)
                 {

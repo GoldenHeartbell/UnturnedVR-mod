@@ -6,8 +6,9 @@ namespace UnturnedVR.Patches
 {
     /// <summary>
     /// Binoculars: while zoomed, the primary action sets a map marker where player.look.aim points (a raycast from the
-    /// head). In VR the aim stays on the head, but the picture shows where the binoculars point, so for the duration
-    /// of the call the aim transform is put on the binoculars' view (VRBinoculars.TryGetView) and restored afterwards.
+    /// head). The lens picture follows the (calmed) head direction, so for the duration of the call the aim transform
+    /// is put on exactly that view (VRBinoculars.TryGetView) and restored afterwards: the marker lands where the
+    /// picture's centre is.
     /// Same shape as UseableGunMuzzlePatch.
     /// </summary>
     [HarmonyPatch(typeof(UseableOptic), nameof(UseableOptic.startPrimary))]

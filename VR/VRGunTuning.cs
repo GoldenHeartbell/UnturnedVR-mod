@@ -17,7 +17,7 @@ namespace UnturnedVR.VR
     /// unique). Item lines override classes. Lines starting with # are comments.
     /// Two more optional numbers follow the pitch: yaw and roll in degrees ("name x y z pitch yaw roll"). Binoculars use the
     /// class name "optic" (or "item &lt;id|guid&gt;"): "optic 0 0.07 0 0" lifts them 7 cm off the hand; the log prints id and guid.
-    /// "smooth optic 1 0.05" sets the hand-shake filter of the binoculars' view (minCutoff in Hz: lower = steadier, more lag;
+    /// "smooth optic 2 0.1" sets the smoothing of the binoculars' view, which follows the head (minCutoff in Hz: lower = steadier, more lag;
     /// beta: higher = less lag when sweeping); read when the binoculars are raised.
     /// Cost: one file timestamp check per equip.
     /// </summary>

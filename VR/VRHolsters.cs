@@ -117,8 +117,12 @@ namespace UnturnedVR.VR
             return downKey != KeyCode.None && key == downKey;
         }
 
-        /// <summary>Once per frame from VRKeyMap with the raw grip states, before VRHold.</summary>
-        public static void Update(bool leftGrip, bool rightGrip, bool uiOpen)
+        /// <summary>
+        /// Once per frame from VRKeyMap with the raw grip states, before VRHold. <paramref name="ignoreHand"/> is a hand
+        /// whose grip means something else right now (hold breath while aiming): it finds no zone, so no tick and no
+        /// draw / holster, however close to the body it is.
+        /// </summary>
+        public static void Update(bool leftGrip, bool rightGrip, bool uiOpen, int ignoreHand = -1)
         {
             downKey = KeyCode.None;
             CheckFile();
@@ -164,7 +168,7 @@ namespace UnturnedVR.VR
 
                 int zone = -1;
                 Transform anchor = VRHands.Anchor(hand);
-                if (usable && anchor != null && VRHands.IsTracked(hand))
+                if (usable && anchor != null && VRHands.IsTracked(hand) && hand != ignoreHand)
                 {
                     zone = FindZone(anchor.position, head, yaw);
                 }

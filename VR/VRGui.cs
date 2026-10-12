@@ -42,7 +42,7 @@ namespace UnturnedVR.VR
         // (HintDistance / HintHeight) that only moves when you turn far away or walk off. Guesses to tune in-headset.
         private const float HintLift = 0.15f;              // gap between the top of the object and the label's centre
         private const float HintMaxAbove = 0.9f;           // never higher than this above the object's pivot
-        private const float HintMinViewDistance = 0.6f;    // the label is scaled with its distance, between these two
+        private const float HintMinViewDistance = 0.6f;   // the label is scaled with its distance, between these two
         private const float HintMaxViewDistance = 3f;
         private const float HintDeadzoneDegrees = 40f;     // untargeted: head turned this far from the label = bring it back
         private const float HintFreeMaxDistance = 2.5f;    // untargeted: walked this far from the label = bring it back
@@ -134,6 +134,9 @@ namespace UnturnedVR.VR
         private Vector3 hintFreeLocal;               // free spot in rig space (moves with the body, not with the head)
         private bool hintRecentering;
         private bool loggedHint;
+        private VRWorldLabels worldLabels;                                                  // teammate names and hit markers in the world
+        private readonly System.Collections.Generic.List<Rect> hudHoles = new System.Collections.Generic.List<Rect>();
+        private readonly System.Collections.Generic.List<Rect> shownHoles = new System.Collections.Generic.List<Rect>();
         private RenderTexture uiTexture;
         private Camera overlayCamera;
         private Transform loadingHead;
@@ -343,7 +346,8 @@ namespace UnturnedVR.VR
         private void UpdateHint(Transform eye)
         {
             Rect hintRect = default;
-            bool show = eye != null && !menuLayout && !VRBinoculars.LensVisible && TryGetHintRect(out hintRect);
+            bool inGame = eye != null && !menuLayout && !VRBinoculars.LensVisible;
+            bool show = inGame && TryGetHintRect(out hintRect);
 
             if (show != hintShown)
             {
@@ -365,10 +369,6 @@ namespace UnturnedVR.VR
                         VRLog.Info("hint panel: rect " + hintRect + " in canvas " + CanvasSize + ".");
                     }
                 }
-                else
-                {
-                    panelFilter.sharedMesh = quadMesh;
-                }
             }
 
             if (hintPanel.gameObject.activeSelf != show)
@@ -379,6 +379,117 @@ namespace UnturnedVR.VR
             {
                 PlaceHintPanel(eye);
             }
+
+            // What is cut out of the HUD panel: the hint box, and every teammate name / hit marker that now hangs in the world.
+            hudHoles.Clear();
+            if (show)
+            {
+                hudHoles.Add(hintRect);
+            }
+            if (worldLabels != null)
+            {
+                if (inGame)
+                {
+                    float aspect = (float)uiTexture.width / uiTexture.height;
+                    worldLabels.Update(eye, CanvasSize, aspect, PanelWidth / PanelDistance, hudHoles);
+                }
+                else
+                {
+                    worldLabels.Hide();
+                }
+            }
+            ApplyHudHoles();
+        }
+
+        /// <summary>
+        /// The HUD panel is the whole texture minus the rectangles in <see cref="hudHoles"/> (canvas units, origin top
+        /// left): a band mesh, rebuilt only when the rectangles change. No holes = the plain quad.
+        /// </summary>
+        private void ApplyHudHoles()
+        {
+            bool same = hudHoles.Count == shownHoles.Count;
+            for (int i = 0; same && i < hudHoles.Count; i++)
+            {
+                same = hudHoles[i] == shownHoles[i];
+            }
+            if (same)
+            {
+                return;
+            }
+
+            shownHoles.Clear();
+            shownHoles.AddRange(hudHoles);
+            if (hudHoles.Count == 0)
+            {
+                panelFilter.sharedMesh = quadMesh;
+                return;
+            }
+
+            Vector2 canvasSize = CanvasSize;
+            var u0s = new float[hudHoles.Count];
+            var u1s = new float[hudHoles.Count];
+            var v0s = new float[hudHoles.Count];
+            var v1s = new float[hudHoles.Count];
+            var bands = new System.Collections.Generic.List<float> { 0f, 1f };
+            for (int i = 0; i < hudHoles.Count; i++)
+            {
+                Rect rect = hudHoles[i];
+                u0s[i] = Mathf.Clamp01(rect.xMin / canvasSize.x);
+                u1s[i] = Mathf.Clamp01(rect.xMax / canvasSize.x);
+                v1s[i] = Mathf.Clamp01(1f - rect.yMin / canvasSize.y);
+                v0s[i] = Mathf.Clamp01(1f - rect.yMax / canvasSize.y);
+                bands.Add(v0s[i]);
+                bands.Add(v1s[i]);
+            }
+            bands.Sort();
+
+            var vertices = new System.Collections.Generic.List<Vector3>(32);
+            var uvs = new System.Collections.Generic.List<Vector2>(32);
+            var triangles = new System.Collections.Generic.List<int>(48);
+            for (int band = 0; band + 1 < bands.Count; band++)
+            {
+                float bottom = bands[band];
+                float top = bands[band + 1];
+                if (top - bottom < 0.00001f)
+                {
+                    continue;
+                }
+
+                // Within this horizontal band the holes cover fixed intervals in u; draw what is left between them.
+                float middle = (bottom + top) * 0.5f;
+                float cursor = 0f;
+                while (true)
+                {
+                    int next = -1;
+                    for (int i = 0; i < hudHoles.Count; i++)
+                    {
+                        if (v0s[i] <= middle && middle <= v1s[i] && u1s[i] > cursor && (next < 0 || u0s[i] < u0s[next]))
+                        {
+                            next = i;
+                        }
+                    }
+                    if (next < 0)
+                    {
+                        break;
+                    }
+                    if (u0s[next] > cursor)
+                    {
+                        AddRect(vertices, uvs, triangles, cursor, bottom, u0s[next], top);
+                    }
+                    cursor = Mathf.Max(cursor, u1s[next]);
+                }
+                if (cursor < 1f)
+                {
+                    AddRect(vertices, uvs, triangles, cursor, bottom, 1f, top);
+                }
+            }
+
+            holeMesh.Clear();
+            holeMesh.SetVertices(vertices);
+            holeMesh.SetUVs(0, uvs);
+            holeMesh.SetTriangles(triangles, 0);
+            holeMesh.RecalculateBounds();
+            panelFilter.sharedMesh = holeMesh;
         }
 
         /// <summary>
@@ -480,22 +591,7 @@ namespace UnturnedVR.VR
             float v1 = Mathf.Clamp01(1f - rect.yMin / canvasSize.y);
             float v0 = Mathf.Clamp01(1f - rect.yMax / canvasSize.y);
 
-            // HUD panel: the whole texture except the label's rectangle.
-            var vertices = new System.Collections.Generic.List<Vector3>(16);
-            var uvs = new System.Collections.Generic.List<Vector2>(16);
-            var triangles = new System.Collections.Generic.List<int>(24);
-            AddRect(vertices, uvs, triangles, 0f, 0f, 1f, v0);
-            AddRect(vertices, uvs, triangles, 0f, v1, 1f, 1f);
-            AddRect(vertices, uvs, triangles, 0f, v0, u0, v1);
-            AddRect(vertices, uvs, triangles, u1, v0, 1f, v1);
-            holeMesh.Clear();
-            holeMesh.SetVertices(vertices);
-            holeMesh.SetUVs(0, uvs);
-            holeMesh.SetTriangles(triangles, 0);
-            holeMesh.RecalculateNormals();
-            holeMesh.RecalculateBounds();
-            panelFilter.sharedMesh = holeMesh;
-
+            // (The HUD panel's matching hole is cut by ApplyHudHoles, together with the world labels' rectangles.)
             // Near panel: only the label's rectangle, sized to look like the HUD scaled down to HintDistance.
             hintMesh.uv = new[] { new Vector2(u0, v0), new Vector2(u1, v0), new Vector2(u0, v1), new Vector2(u1, v1) };
             float aspect = (float)uiTexture.width / uiTexture.height;
@@ -767,6 +863,9 @@ namespace UnturnedVR.VR
             attachRenderer.receiveShadows = false;
             attachPanel = attach.transform;
             attach.SetActive(false);
+
+            // Teammate names and hit markers: cropped from the same texture, hung in the world (VRWorldLabels).
+            worldLabels = new VRWorldLabels(transform, panelMaterial, panelLayer);
         }
 
         private void ResizePanel()
