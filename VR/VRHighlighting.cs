@@ -22,24 +22,41 @@ namespace UnturnedVR.VR
 #else
         private static bool loggedCreated;
 
+        // Sync runs every frame: the two components are looked up again only when the camera changes or the cached
+        // one is gone (a missing source is looked for every call, as before, since it may be added later).
+        private static Camera cachedFrom;
+        private static Camera cachedTo;
+        private static HighlightingRenderer cachedSource;
+        private static HighlightingRenderer cachedTarget;
+
         public static void Sync(Camera from, Camera to)
         {
-            HighlightingRenderer source = from.GetComponent<HighlightingRenderer>();
+            if (cachedFrom != from || cachedSource == null)
+            {
+                cachedFrom = from;
+                cachedSource = from.GetComponent<HighlightingRenderer>();
+            }
+            HighlightingRenderer source = cachedSource;
             if (source == null)
             {
                 return;
             }
 
-            HighlightingRenderer target = to.GetComponent<HighlightingRenderer>();
-            if (target == null)
+            if (cachedTo != to || cachedTarget == null)
             {
-                target = to.gameObject.AddComponent<HighlightingRenderer>();
-                if (!loggedCreated)
+                cachedTo = to;
+                cachedTarget = to.GetComponent<HighlightingRenderer>();
+                if (cachedTarget == null)
                 {
-                    loggedCreated = true;
-                    VRLog.Info("added HighlightingRenderer to the VR camera (outline for interactable objects).");
+                    cachedTarget = to.gameObject.AddComponent<HighlightingRenderer>();
+                    if (!loggedCreated)
+                    {
+                        loggedCreated = true;
+                        VRLog.Info("added HighlightingRenderer to the VR camera (outline for interactable objects).");
+                    }
                 }
             }
+            HighlightingRenderer target = cachedTarget;
 
             if (target.enabled != source.enabled) target.enabled = source.enabled;
             if (target.fillAlpha != source.fillAlpha) target.fillAlpha = source.fillAlpha;

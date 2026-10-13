@@ -28,6 +28,12 @@ namespace UnturnedVR.Patches
                 return;
             }
 
+            // The left stick rolls a freeform barricade while it is being turned (BuildingRotatePatch).
+            if (BuildingRotate.OwnsLeftStick(__instance.player))
+            {
+                return;
+            }
+
             VR.VRControllerInput.Refresh();
             Vector2 stick = VR.VRControllerInput.LeftStick;
             if (stick == Vector2.zero)

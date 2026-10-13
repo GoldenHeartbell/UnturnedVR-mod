@@ -51,6 +51,9 @@ namespace UnturnedVR.VR
             // Hold breath: the game's steady aim is the sprint key. While a scope is at the eye the gun hand's grip is that key
             // (the interact grip above is switched off for the same time); left stick click does the same as before.
             new Entry { Right = true,  Button = VRButton.Grip,       Key = () => ControlsSettings.sprint, Role = 5 },
+            // The game's snap key (round to 15 degrees while turning a barricade before it is placed) on the free hand's grip,
+            // next to the fire mode entry above: nothing else reads it while an item is in hand.
+            new Entry { Right = false, Button = VRButton.Grip,       Key = () => ControlsSettings.snap, Role = 4 },
             new Entry { Right = true,  Button = VRButton.A,          Key = () => ControlsSettings.jump },
             // Right B is reload with a gun (or nothing) in hand, the item's own attach key (T) for any other item, the lock in a
             // vehicle, and the interact key (next page / skip) while an NPC dialogue is open. Left A (stance on foot, which
@@ -60,6 +63,9 @@ namespace UnturnedVR.VR
                 AllowInUiWhen = () => PlayerNPCDialogueUI.active,
                 KeepHeldInUi = () => itemUsesAttachKey && !inVehicle },
             new Entry { Right = false, Button = VRButton.A,          Key = () => inVehicle ? ControlsSettings.other : StanceKey() },
+            // Menus only: the same button rotates the item that is being dragged in the inventory (the game's rotate key, R).
+            // Stance does nothing over a cursor UI, so left A is free there; the entry above stays latched while a UI is open.
+            new Entry { Right = false, Button = VRButton.A,          Key = () => ControlsSettings.rotate, AllowInUi = true, UiOnly = true },
             // Menus only: the game's "other" modifier, e.g. right-click on an inventory item = quick equip/dequip/move.
             new Entry { Right = true,  Button = VRButton.Grip,       Key = () => ControlsSettings.other, AllowInUi = true, UiOnly = true },
             new Entry { Right = false, Button = VRButton.B,          Key = () => KeyCode.Escape, AllowInUi = true },
@@ -105,6 +111,7 @@ namespace UnturnedVR.VR
 
         public static bool GetKey(KeyCode key)
         {
+            if (key == KeyCode.None) return false; // an unbound action is never pressed
             Refresh();
             if (VRAttachMenu.Wanted && key == ControlsSettings.attach) return true;
             foreach (Entry e in entries)
@@ -116,6 +123,7 @@ namespace UnturnedVR.VR
 
         public static bool GetKeyDown(KeyCode key)
         {
+            if (key == KeyCode.None) return false; // an unbound action is never pressed
             Refresh();
             if (VRAttachMenu.KeyDown && key == ControlsSettings.attach) return true;
             if (VRHolsters.KeyDown(key) || VRGestures.KeyDown(key)) return true;
@@ -128,6 +136,7 @@ namespace UnturnedVR.VR
 
         public static bool GetKeyUp(KeyCode key)
         {
+            if (key == KeyCode.None) return false; // an unbound action is never pressed
             Refresh();
             if (VRAttachMenu.KeyUp && key == ControlsSettings.attach) return true;
             foreach (Entry e in entries)

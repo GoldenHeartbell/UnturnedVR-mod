@@ -85,8 +85,18 @@ namespace UnturnedVR.VR
             return frameHead + frameYaw * VRArms.NeckOffset + frameYaw * earOffsets[side];
         }
         // Switched in holsters.txt ("markers on", "log on"), so they work without a rebuild while wearing the headset.
+        // The markers are also a setting on the VR settings page (VRSettings): once the page has saved a value it wins
+        // over the line in holsters.txt.
         private static bool fileMarkers;
         private static bool fileLog;
+
+        /// <summary>The zone rings are shown (settings page value, else holsters.txt). Not counting the debug flag.</summary>
+        public static bool MarkersEnabled => VRSettings.HolsterMarkers(fileMarkers);
+
+        public static void SetMarkersEnabled(bool on)
+        {
+            VRSettings.SetHolsterMarkers(on);
+        }
 
         private const float TickAmplitude = 0.25f; // entering a zone: a light tick (was 0.5, too strong)
         private const float ActionAmplitude = 0.8f;
@@ -104,6 +114,7 @@ namespace UnturnedVR.VR
 
         // Debug markers (VRDebugFlags.HolsterMarkers).
         private static LineRenderer[] markers;
+        private static readonly Vector3[] ringPoints = new Vector3[2 * 25]; // one ring's points, reused (matches CreateMarker)
 
         /// <summary>A zone used this hand's grip press; it must not reach the game or VRHold until released.</summary>
         public static bool Consumed(bool right)
@@ -302,7 +313,7 @@ namespace UnturnedVR.VR
 
         private static void UpdateMarkers(bool usable, Vector3 head, Quaternion yaw, int equippedSlot, PlayerEquipment equipment)
         {
-            if (!(VRDebugFlags.HolsterMarkers || fileMarkers))
+            if (!(VRDebugFlags.HolsterMarkers || MarkersEnabled))
             {
                 if (markers != null)
                 {
@@ -333,7 +344,10 @@ namespace UnturnedVR.VR
                 {
                     line.gameObject.layer = VRGui.PanelLayer;
                 }
-                line.gameObject.SetActive(usable);
+                if (line.gameObject.activeSelf != usable)
+                {
+                    line.gameObject.SetActive(usable);
+                }
                 if (!usable)
                 {
                     continue;
@@ -352,9 +366,10 @@ namespace UnturnedVR.VR
                 {
                     float angle = i * Mathf.PI * 2f / steps;
                     // Horizontal ring (sideways x forward) and an upright ring (sideways x up).
-                    line.SetPosition(i, center + yaw * new Vector3(Mathf.Cos(angle) * ringRadius, 0f, Mathf.Sin(angle) * ringRadius));
-                    line.SetPosition(steps + 1 + i, center + yaw * new Vector3(Mathf.Cos(angle) * ringRadius, Mathf.Sin(angle) * ringHeight, 0f));
+                    ringPoints[i] = center + yaw * new Vector3(Mathf.Cos(angle) * ringRadius, 0f, Mathf.Sin(angle) * ringRadius);
+                    ringPoints[steps + 1 + i] = center + yaw * new Vector3(Mathf.Cos(angle) * ringRadius, Mathf.Sin(angle) * ringHeight, 0f);
                 }
+                line.SetPositions(ringPoints); // one native call instead of 50
             }
         }
 

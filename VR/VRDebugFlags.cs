@@ -44,9 +44,16 @@ namespace UnturnedVR.VR
 
         /// <summary>
         /// Frame cost report every 5 s (VRPerf): fps, longest frame, mod script ms per frame, GC, and what each equipped
-        /// item adds to the scene. On while the item pickup slowdown is investigated.
+        /// item adds to the scene; plus a trend line every 30 s (memory, object counts, players, XR render size). Off by
+        /// default; flip to true to investigate a frame time problem (the instrumentation costs nothing while off).
         /// </summary>
         public static bool LogPerf = false;
+
+        /// <summary>
+        /// Logs what the SteamVR keyboard reports per keystroke (read text, events, the text written into the field), at
+        /// most 120 lines per run, plus grip presses near the keyboard (VRKeyboard). Off by default; flip to debug typing.
+        /// </summary>
+        public static bool LogKeyboard = false;
 
         // Runtime bisect switches for the item slowdown (RightCtrl + keypad 1-4, see VRPerf). All off = normal behaviour.
         public static bool PerfNoViewmodel;

@@ -209,7 +209,10 @@ namespace UnturnedVR.VR
         /// <summary>
         /// GraphicsSettings applies the render path (deferred/forward), HDR, MSAA, far clip and cull
         /// distances to MainCamera only, and can do so after our one-time copy or when the player
-        /// changes settings in game. Mirror them onto the VR camera every frame (setters only on change).
+        /// changes settings in game. Mirror them onto the VR camera (setters only on change). Called every frame:
+        /// the culling mask is applied each time (it follows the mod's own state), the rest of the mirror and the
+        /// highlighting settings run at most every <see cref="MirrorCheckSeconds"/>, or at once after
+        /// <see cref="RequestSettingsSync"/> (the GraphicsSettings.apply postfix).
         /// </summary>
         public static void SyncGraphicsSettings()
         {
@@ -220,7 +223,11 @@ namespace UnturnedVR.VR
                 return;
             }
 
-            VRHighlighting.Sync(from, to);
+            // Same gate MirrorSettings uses for the VR camera (it moves it forward right after this check).
+            if (Time.unscaledTime >= nextMirrorCheck)
+            {
+                VRHighlighting.Sync(from, to);
+            }
 
             // The menu camera's mask and clear settings change between menu pages / loading.
             int mask = from.cullingMask & ~(1 << Mathf.Max(VRGui.PanelLayer, 0));
@@ -242,6 +249,23 @@ namespace UnturnedVR.VR
         /// </summary>
         internal static void MirrorSettings(Camera from, Camera to, int mask)
         {
+            // The mask depends on per frame state (arms drawn, panel layer), so it is applied on every call.
+            if (to.cullingMask != mask)
+            {
+                to.cullingMask = mask;
+            }
+
+            // Everything else changes rarely (graphics settings, menu pages): the VR camera is synced every frame and
+            // re-checks it a few times a second; other targets (the binoculars lens) are called rarely and check each time.
+            if (to == hmdCamera)
+            {
+                if (Time.unscaledTime < nextMirrorCheck)
+                {
+                    return;
+                }
+                nextMirrorCheck = Time.unscaledTime + MirrorCheckSeconds;
+            }
+
             if (to.renderingPath != from.renderingPath)
             {
                 to.renderingPath = from.renderingPath;
@@ -254,10 +278,6 @@ namespace UnturnedVR.VR
             if (to.allowMSAA != from.allowMSAA)
             {
                 to.allowMSAA = from.allowMSAA;
-            }
-            if (to.cullingMask != mask)
-            {
-                to.cullingMask = mask;
             }
             if (to.clearFlags != from.clearFlags)
             {
@@ -280,11 +300,21 @@ namespace UnturnedVR.VR
                 to.layerCullSpherical = from.layerCullSpherical;
             }
 
+            // Both getters hand out a fresh float[32]; this part only runs when the throttle above lets it through.
             float[] distances = from.layerCullDistances;
             if (!SameDistances(distances, to.layerCullDistances))
             {
                 to.layerCullDistances = distances;
             }
+        }
+
+        private const float MirrorCheckSeconds = 0.25f;
+        private static float nextMirrorCheck;
+
+        /// <summary>The graphics settings were just applied by the game: mirror them on the next sync, not on the timer.</summary>
+        public static void RequestSettingsSync()
+        {
+            nextMirrorCheck = 0f;
         }
 
         private static bool SameDistances(float[] a, float[] b)

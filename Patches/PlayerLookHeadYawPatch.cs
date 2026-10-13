@@ -43,8 +43,9 @@ namespace UnturnedVR.Patches
             }
 
             // M5: right stick X = smooth turn. Rotates the body (and the rig parented to it) without
-            // touching the head-delta bookkeeping above. Up/down is deliberately ignored.
-            if (bodyFollowsHead && !PlayerUI.window.showCursor && !LoadingUI.isBlocked)
+            // touching the head-delta bookkeeping above. Up/down is deliberately ignored. Not while the game itself ignores
+            // look input (turning a barricade before placing it: the same stick rotates the item, see BuildingRotatePatch).
+            if (bodyFollowsHead && !PlayerUI.window.showCursor && !LoadingUI.isBlocked && !__instance.isIgnoringInput)
             {
                 VR.VRControllerInput.Refresh();
                 ____yaw += VR.VRControllerInput.RightStick.x * SmoothTurnSpeed * Time.deltaTime;

@@ -281,7 +281,13 @@ namespace UnturnedVR.VR
             }
 
             // The panel layer must not be drawn by the eye camera itself (the overlay camera does it).
-            eye.cullingMask &= ~(1 << panelLayer);
+            // (Written only when the bit is actually set: this runs every frame and the mask is almost always clean.)
+            int panelBit = 1 << panelLayer;
+            int eyeMask = eye.cullingMask;
+            if ((eyeMask & panelBit) != 0)
+            {
+                eye.cullingMask = eyeMask & ~panelBit;
+            }
 
             if (Input.GetKeyDown(RecenterKey))
             {

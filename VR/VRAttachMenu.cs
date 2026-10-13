@@ -43,6 +43,7 @@ namespace UnturnedVR.VR
         private static readonly bool[] consumedB = new bool[2];
         private static readonly bool[] bypass = new bool[2];
         private static bool tapPulse;
+        private static bool holdActive; // opened in hold mode: closes when that B is released
         private static bool pending;
         private static float pressTime;
         private static int openFrame;
@@ -77,7 +78,9 @@ namespace UnturnedVR.VR
             tapPulse = false;
             controlledHand = -1;
 
-            bool[] raw = { leftB, rightB };
+            bool[] raw = rawBuffer; // reused: this runs every frame
+            raw[0] = leftB;
+            raw[1] = rightB;
             for (int h = 0; h < 2; h++)
             {
                 if (!raw[h])
@@ -90,7 +93,7 @@ namespace UnturnedVR.VR
             int hand = VRArms.ItemHand;
             bool gunHeld = gun != null && hand >= 0 && hand <= 1;
 
-            Open = gun != null && isAttachingField != null && (bool)isAttachingField.GetValue(gun);
+            Open = gun != null && ReadAttaching(gun);
             if (Open)
             {
                 seenOpen = true;
@@ -161,6 +164,8 @@ namespace UnturnedVR.VR
                     else if (!uiOpen && !gun.player.equipment.isBusy)
                     {
                         Request();
+                        // Hold mode (VR settings page): this press keeps the menu open only while it is held.
+                        holdActive = Wanted && VRSettings.AttachMenuHold;
                     }
                 }
 
@@ -175,6 +180,11 @@ namespace UnturnedVR.VR
                     {
                         tapPulse = true;
                     }
+                }
+                else if (up && holdActive)
+                {
+                    // The long press that opened it ends: close, and do not deliver B as a tap (no reload / pause).
+                    Release();
                 }
             }
 
@@ -198,11 +208,12 @@ namespace UnturnedVR.VR
             KeyDown = true;
             seenOpen = false;
             openFrame = Time.frameCount;
-            VRLog.Info("attach menu: opened (long press B).");
+            VRLog.Info("attach menu: opened (long press B, " + (VRSettings.AttachMenuHold ? "hold mode: closes when B is released" : "toggle mode: closes with the next B press") + ").");
         }
 
         private static void Release()
         {
+            holdActive = false;
             if (!Wanted)
             {
                 return;
@@ -441,9 +452,36 @@ namespace UnturnedVR.VR
             buttons[4] = magazineField != null ? magazineField.GetValue(gun) as ISleekElement : null;
         }
 
+        // Typed field reference: reading isAttaching through FieldInfo.GetValue boxes a bool every call, and this is read
+        // every frame. Declared after isAttachingField (static initializers run in order); null when the field is missing
+        // or not a bool, then the reflection read below is used.
+        private static readonly bool[] rawBuffer = new bool[2];
+        private static readonly HarmonyLib.AccessTools.FieldRef<UseableGun, bool> isAttachingRef = CreateIsAttachingRef();
+
+        private static HarmonyLib.AccessTools.FieldRef<UseableGun, bool> CreateIsAttachingRef()
+        {
+            try
+            {
+                return isAttachingField != null ? HarmonyLib.AccessTools.FieldRefAccess<UseableGun, bool>(isAttachingField) : null;
+            }
+            catch (System.Exception)
+            {
+                return null;
+            }
+        }
+
+        private static bool ReadAttaching(UseableGun gun)
+        {
+            if (isAttachingRef != null)
+            {
+                return isAttachingRef(gun);
+            }
+            return isAttachingField != null && (bool)isAttachingField.GetValue(gun);
+        }
+
         public static bool IsAttaching(UseableGun gun)
         {
-            return gun != null && isAttachingField != null && (bool)isAttachingField.GetValue(gun);
+            return gun != null && ReadAttaching(gun);
         }
     }
 }

@@ -26,6 +26,7 @@ namespace UnturnedVR
             {
                 VR.VRGui.Create();
                 VR.VRPointer.Create();
+                VR.VRKeyboard.Create();
             }
         }
 

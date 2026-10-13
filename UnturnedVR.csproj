@@ -88,6 +88,20 @@
       <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.PhysicsModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- SteamVR keyboard: the game's text fields are TMP_InputField components, focus comes from the uGUI EventSystem. -->
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\Unity.TextMeshPro.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- VR settings page: GUIContent, the type of the game's own Hold / Toggle state buttons (SleekButtonState). -->
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <!-- M2 probe only: Unity.XR.Management.dll is not part of the base install, we're adding it.

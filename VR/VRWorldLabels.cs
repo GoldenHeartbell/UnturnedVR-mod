@@ -122,6 +122,14 @@ namespace UnturnedVR.VR
 
         private void AddGroupLabels()
         {
+            // Teammate labels are for other players: alone on the server (or in singleplayer) there is nothing to show, so
+            // the reflection reads below are skipped.
+            List<SteamPlayer> players = Provider.clients;
+            if (players == null || players.Count <= 1)
+            {
+                return;
+            }
+
             object ui = playerUiInstance != null ? playerUiInstance.GetValue(null) : null;
             object group = ui != null && groupUiField != null ? groupUiField.GetValue(ui) : null;
             if (group == null)
@@ -212,11 +220,18 @@ namespace UnturnedVR.VR
             }
 
             Piece piece = GetPiece(used++);
-            piece.Uv[0] = new Vector2(u0, v0);
-            piece.Uv[1] = new Vector2(u1, v0);
-            piece.Uv[2] = new Vector2(u0, v1);
-            piece.Uv[3] = new Vector2(u1, v1);
-            piece.Mesh.uv = piece.Uv;
+            // The mesh is only re-uploaded when the cropped rectangle moved (Uv[0] / Uv[3] are its two corners; a fresh
+            // piece holds zeros, which a drawn rectangle never equals).
+            Vector2 uvMin = new Vector2(u0, v0);
+            Vector2 uvMax = new Vector2(u1, v1);
+            if (piece.Uv[0] != uvMin || piece.Uv[3] != uvMax)
+            {
+                piece.Uv[0] = uvMin;
+                piece.Uv[1] = new Vector2(u1, v0);
+                piece.Uv[2] = new Vector2(u0, v1);
+                piece.Uv[3] = uvMax;
+                piece.Mesh.uv = piece.Uv;
+            }
 
             Vector3 fromEye = anchor - eye.position;
             float distance = fromEye.magnitude;

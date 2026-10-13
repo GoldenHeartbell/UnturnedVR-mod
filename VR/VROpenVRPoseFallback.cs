@@ -17,10 +17,12 @@ namespace UnturnedVR.VR
     /// </summary>
     internal class VROpenVRPoseFallback : MonoBehaviour
     {
+        // When XR reports no head device the query is not repeated twice a frame: it is skipped for this long, then retried.
+        private const float XrRetrySeconds = 1f;
+
         private readonly List<InputDevice> deviceBuffer = new List<InputDevice>();
-        private readonly TrackedDevicePose_t[] renderPoses = new TrackedDevicePose_t[OpenVR.k_unMaxTrackedDeviceCount];
-        private readonly TrackedDevicePose_t[] gamePoses = new TrackedDevicePose_t[OpenVR.k_unMaxTrackedDeviceCount];
         private readonly TrackedDevicePose_t[] fallbackPoses = new TrackedDevicePose_t[1];
+        private float xrRetryAt;
         private bool loggedNoSystem;
         private bool loggedFirstPose;
 
@@ -43,12 +45,16 @@ namespace UnturnedVR.VR
 
         private void Apply()
         {
-            deviceBuffer.Clear();
-            InputDevices.GetDevicesWithCharacteristics(
-                InputDeviceCharacteristics.HeadMounted | InputDeviceCharacteristics.TrackedDevice, deviceBuffer);
-            if (deviceBuffer.Count > 0)
+            if (Time.unscaledTime >= xrRetryAt)
             {
-                return; // TrackedPoseDriver has a real device to follow.
+                deviceBuffer.Clear();
+                InputDevices.GetDevicesWithCharacteristics(
+                    InputDeviceCharacteristics.HeadMounted | InputDeviceCharacteristics.TrackedDevice, deviceBuffer);
+                if (deviceBuffer.Count > 0)
+                {
+                    return; // TrackedPoseDriver has a real device to follow.
+                }
+                xrRetryAt = Time.unscaledTime + XrRetrySeconds;
             }
 
             CVRSystem system = OpenVR.System;
@@ -64,16 +70,14 @@ namespace UnturnedVR.VR
 
             // Prefer the compositor's render pose: the predicted pose for this frame's photon time,
             // i.e. exactly what the eyes are rendered/reprojected with. Asking the system for "now"
-            // (prediction 0) mismatches it and shows up as shaky camera movement.
-            TrackedDevicePose_t pose;
+            // (prediction 0) mismatches it and shows up as shaky camera movement. Only the HMD's pose is fetched
+            // (GetLastPoses would copy the poses of all 64 devices, twice, on each of the two calls per frame).
+            TrackedDevicePose_t pose = default;
+            TrackedDevicePose_t gamePose = default;
             CVRCompositor compositor = OpenVR.Compositor;
-            if (compositor != null
-                && compositor.GetLastPoses(renderPoses, gamePoses) == EVRCompositorError.None
-                && renderPoses[(int)OpenVR.k_unTrackedDeviceIndex_Hmd].bPoseIsValid)
-            {
-                pose = renderPoses[(int)OpenVR.k_unTrackedDeviceIndex_Hmd];
-            }
-            else
+            if (compositor == null
+                || compositor.GetLastPoseForTrackedDeviceIndex(OpenVR.k_unTrackedDeviceIndex_Hmd, ref pose, ref gamePose) != EVRCompositorError.None
+                || !pose.bPoseIsValid)
             {
                 system.GetDeviceToAbsoluteTrackingPose(ETrackingUniverseOrigin.TrackingUniverseStanding, 0f, fallbackPoses);
                 pose = fallbackPoses[(int)OpenVR.k_unTrackedDeviceIndex_Hmd];

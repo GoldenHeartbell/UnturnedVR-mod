@@ -21,6 +21,10 @@ namespace UnturnedVR.VR
         // forward points above where the hand points).
         private const float ScrollPerSecond = 15f;
         private const float OffPanel = -10000f;
+        // The trigger is a held mouse button (sliders, scroll bars, map panning need press-and-drag), but a click must still
+        // land where the press started although the hand moves while the trigger is pulled: the position stays latched
+        // at the press point until the ray has moved this far (pixels of a 1080 high UI texture), then it follows the ray.
+        private const float DragStartPixels = 24f;
 
         /// <summary>True while the pointer owns the mouse (a UI wants a cursor and the right controller is tracked).</summary>
         public static bool Active { get; private set; }
@@ -74,11 +78,84 @@ namespace UnturnedVR.VR
             }
         }
 
+        /// <summary>
+        /// The trigger as a held mouse button. Down on the press frame, held while the trigger is, up on the release frame.
+        /// The reported position is latched at the press point until the ray has moved DragStartPixels (a deliberate
+        /// drag), then it follows the ray; a release without a drag lands at the press point like the old one-frame tap
+        /// did, so clicks hit the element that was pressed.
+        /// </summary>
+        private struct Press
+        {
+            private bool wasHeld;
+            private bool pressed;
+            private bool dragging;
+            private Vector3 start;
+            private Vector3 lastLive;
+
+            public bool Held { get; private set; }
+            public bool Down { get; private set; }
+            public bool Up { get; private set; }
+
+            public Vector3 Update(bool held, Vector3 live, bool liveValid, float dragStartPixels)
+            {
+                Down = false;
+                Up = false;
+                if (liveValid)
+                {
+                    lastLive = live;
+                }
+
+                if (held && !wasHeld)
+                {
+                    pressed = true;
+                    dragging = false;
+                    start = live;
+                    Down = true;
+                }
+                else if (!held && wasHeld && pressed)
+                {
+                    Up = true;
+                }
+
+                Vector3 result = live;
+                if (pressed)
+                {
+                    if (!dragging && liveValid && (live - start).sqrMagnitude > dragStartPixels * dragStartPixels)
+                    {
+                        dragging = true;
+                    }
+                    // Dragging off the panel keeps the last position on it (a slider stays clamped, not thrown away).
+                    result = dragging ? (liveValid ? live : lastLive) : start;
+                }
+
+                Held = pressed && !Up;
+                if (Up)
+                {
+                    pressed = false;
+                    dragging = false;
+                }
+                wasHeld = held;
+                return result;
+            }
+
+            public void Reset(bool held)
+            {
+                wasHeld = held; // a trigger already held when a UI opens must not count as a click
+                pressed = false;
+                dragging = false;
+                Held = Down = Up = false;
+            }
+        }
+
         private LineRenderer laser;
         private bool loggedActive;
         private bool loggedHit;
         private float nextPointerLog;
-        private Tap leftTap;
+        private Press leftPress;   // trigger as a held button with a drag latch (map, menus, sliders)
+        private Tap leftTap;       // trigger as a one-frame click (inventory, crafting, skills pages)
+        private bool leftHoldAndDrag = true;
+        private bool leftDown;     // this frame's left press / release, whichever of the two the trigger uses now
+        private bool leftUp;
         private Tap rightTap;
         private bool swallowLeftUp;
         private bool swallowRightUp;
@@ -134,18 +211,45 @@ namespace UnturnedVR.VR
             Vector3 livePosition = hit ? new Vector3(pixel.x, pixel.y, 0f) : new Vector3(OffPanel, OffPanel, 0f);
             // Trigger = left click, A = right click (item context actions: equip, drop, salvage, ...).
             // The left tap owns the reported position, the right tap only overrides it during its own click.
-            MousePosition = leftTap.Update(held, livePosition);
+            // Press-and-drag only where something needs it (see TriggerHoldsAndDrags); the item pages of the dashboard get the
+            // plain click they had before. A change of mode with the trigger down must not produce a click of its own.
+            bool holdAndDrag = TriggerHoldsAndDrags();
+            if (holdAndDrag != leftHoldAndDrag)
+            {
+                leftHoldAndDrag = holdAndDrag;
+                leftPress.Reset(held);
+                leftTap.Reset(held);
+            }
+
+            if (holdAndDrag)
+            {
+                MousePosition = leftPress.Update(held, livePosition, hit, DragStartPixels * Mathf.Max(0.5f, Screen.height / 1080f));
+                ButtonHeld = leftPress.Held;
+                leftDown = leftPress.Down;
+                leftUp = leftPress.Up;
+            }
+            else
+            {
+                MousePosition = leftTap.Update(held, livePosition);
+                leftDown = leftTap.Down;
+                leftUp = leftTap.Up;
+                ButtonHeld = leftDown; // a click: held for the press frame only
+            }
+
             Vector3 rightPosition = rightTap.Update(rightHeld, livePosition);
             if (rightTap.Down || rightTap.Up)
             {
                 MousePosition = rightPosition;
             }
-            ButtonHeld = ButtonDown = leftTap.Down;
-            ButtonUp = leftTap.Up;
+            ButtonDown = leftDown;
+            ButtonUp = leftUp;
             RightButtonHeld = RightButtonDown = rightTap.Down;
             RightButtonUp = rightTap.Up;
             SwallowRefocusClick();
-            leftTap.Advance();
+            if (!holdAndDrag)
+            {
+                leftTap.Advance();
+            }
             rightTap.Advance();
             ScrollDelta = new Vector2(0f, stick.y * ScrollPerSecond * Time.unscaledDeltaTime);
 
@@ -175,10 +279,14 @@ namespace UnturnedVR.VR
         // that follows is dropped too. If Windows refuses the focus the click goes through as before.
         private void SwallowRefocusClick()
         {
-            if (swallowLeftUp && leftTap.Up)
+            if (swallowLeftUp && leftUp)
             {
                 ButtonUp = false;
                 swallowLeftUp = false;
+            }
+            else if (swallowLeftUp)
+            {
+                ButtonHeld = false; // the swallowed press is not held either, until it is released
             }
             if (swallowRightUp && rightTap.Up)
             {
@@ -186,13 +294,23 @@ namespace UnturnedVR.VR
                 swallowRightUp = false;
             }
 
-            if ((leftTap.Down || rightTap.Down) && VRFocus.Unfocused && VRFocus.RequestRefocus())
+            if ((leftDown || rightTap.Down) && VRFocus.Unfocused && VRFocus.RequestRefocus())
             {
-                swallowLeftUp = leftTap.Down;
+                swallowLeftUp = leftDown;
                 swallowRightUp = rightTap.Down;
                 ButtonHeld = ButtonDown = false;
                 RightButtonHeld = RightButtonDown = false;
             }
+        }
+
+        // Where the trigger is a held mouse button (press-and-drag): everywhere except the in-game dashboard's Inventory,
+        // Crafting and Skills pages. The Information page (the map, with the quests / groups / players list beside it) needs
+        // it to pan the map; menus need it for sliders and scroll bars. The dashboard's item pages work with clicks, and the
+        // drag latch got in the way of picking up and dropping items there. The game keeps the last tab flagged active
+        // while the dashboard is closed (PlayerDashboardUI.close), so the dashboard itself has to be open as well.
+        private static bool TriggerHoldsAndDrags()
+        {
+            return !PlayerDashboardUI.active || PlayerDashboardInformationUI.active;
         }
 
         private static bool UiWantsCursor()
@@ -237,7 +355,10 @@ namespace UnturnedVR.VR
 
         private void Deactivate(bool triggerHeld, bool rightHeld)
         {
+            leftPress.Reset(triggerHeld);
             leftTap.Reset(triggerHeld);
+            leftDown = false;
+            leftUp = false;
             rightTap.Reset(rightHeld);
             swallowLeftUp = false;
             swallowRightUp = false;

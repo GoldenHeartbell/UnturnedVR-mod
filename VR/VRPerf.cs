@@ -335,6 +335,7 @@ namespace UnturnedVR.VR
         {
             frameStart = Stopwatch.GetTimestamp();
             HandleSwitches();
+            LogTrend();
             float dt = Time.unscaledDeltaTime;
             frames++;
             frameSum += dt;
@@ -392,6 +393,51 @@ namespace UnturnedVR.VR
             collections = GC.CollectionCount(0);
             heap = nowHeap;
             Reset();
+        }
+
+        // ---- Slow trend (every 30 s): what could differ between runs or grow within one -----------------------------
+        // Absolute numbers, not deltas, so two logs can be compared line by line: managed and engine memory, GC counts,
+        // how many Materials / Meshes / RenderTextures / Renderers exist (a leak shows as a count that only climbs;
+        // the Renderer count is a proxy for how big the world around you is), the network side (players, ping) and the
+        // XR render size (SteamVR auto resolution changes it). The Resources / FindObjects calls cost a few ms, which is
+        // why this runs at 30 s and only with LogPerf.
+        private const float TrendSeconds = 30f;
+        private float nextTrend;
+
+        private void LogTrend()
+        {
+            if (Time.unscaledTime < nextTrend)
+            {
+                return;
+            }
+            nextTrend = Time.unscaledTime + TrendSeconds;
+
+            try
+            {
+                const double Mb = 1048576.0;
+                int players = SDG.Unturned.Provider.clients != null ? SDG.Unturned.Provider.clients.Count : -1;
+                text.Length = 0;
+                text.Append("perf trend: level time ").Append(Time.timeSinceLevelLoad.ToString("0")).Append(" s; managed heap ")
+                    .Append((GC.GetTotalMemory(false) / Mb).ToString("0.0")).Append(" MB, engine ")
+                    .Append((UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong() / Mb).ToString("0")).Append(" / ")
+                    .Append((UnityEngine.Profiling.Profiler.GetTotalReservedMemoryLong() / Mb).ToString("0")).Append(" MB reserved; GC ")
+                    .Append(GC.CollectionCount(0)).Append('/').Append(GC.CollectionCount(1)).Append('/').Append(GC.CollectionCount(2))
+                    .Append(" (gen0/1/2); objects: materials ").Append(Resources.FindObjectsOfTypeAll<Material>().Length)
+                    .Append(", meshes ").Append(Resources.FindObjectsOfTypeAll<Mesh>().Length)
+                    .Append(", render textures ").Append(Resources.FindObjectsOfTypeAll<RenderTexture>().Length)
+                    .Append(", active renderers ").Append(FindObjectsOfType<Renderer>().Length)
+                    .Append("; cameras ").Append(Camera.allCamerasCount)
+                    .Append("; players ").Append(players).Append(", ping ").Append(SDG.Unturned.Provider.ping.ToString("0.000")).Append(" s")
+                    .Append("; XR eye ").Append(UnityEngine.XR.XRSettings.eyeTextureWidth).Append('x').Append(UnityEngine.XR.XRSettings.eyeTextureHeight)
+                    .Append(" scale ").Append(UnityEngine.XR.XRSettings.eyeTextureResolutionScale.ToString("0.00"))
+                    .Append(" viewport ").Append(UnityEngine.XR.XRSettings.renderViewportScale.ToString("0.00"))
+                    .Append("; target fps ").Append(Application.targetFrameRate).Append(", vsync ").Append(QualitySettings.vSyncCount).Append('.');
+                VRLog.Info(text.ToString());
+            }
+            catch (Exception exception)
+            {
+                VRLog.Warn("perf trend failed: " + exception.Message);
+            }
         }
 
         private void Reset()
