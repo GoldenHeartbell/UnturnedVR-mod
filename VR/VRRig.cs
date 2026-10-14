@@ -145,6 +145,41 @@ namespace UnturnedVR.VR
         }
 
         /// <summary>
+        /// Body yaw to add so the body faces where the headset looks, keeping the view itself still (the rig is
+        /// counter-rotated by the same amount). While seated the body does not follow the head, so the view
+        /// drifts away from the body forward; this closes that gap when the body takes over again (leaving a
+        /// seat). Returns 0 until a head pose exists.
+        /// </summary>
+        public static float AlignBodyToView()
+        {
+            if (rigObject == null || !hasLastHeadYaw)
+            {
+                return 0f;
+            }
+
+            // View yaw relative to the body = rig offset + head yaw in tracking space.
+            float delta = Mathf.DeltaAngle(0f, rigYawOffset + lastHeadYaw);
+            rigYawOffset -= delta;
+            rigObject.transform.localRotation = Quaternion.Euler(0f, rigYawOffset, 0f);
+            return delta;
+        }
+
+        /// <summary>
+        /// Turns the view to face the body's forward (the seat's front) at the headset's current yaw, as if the
+        /// player had just sat down looking ahead. Used when entering a seat, so a stale offset does not carry in.
+        /// </summary>
+        public static void AlignViewToBody()
+        {
+            if (rigObject == null || !hasLastHeadYaw)
+            {
+                return;
+            }
+
+            rigYawOffset = -lastHeadYaw;
+            rigObject.transform.localRotation = Quaternion.Euler(0f, rigYawOffset, 0f);
+        }
+
+        /// <summary>
         /// The headset's pitch in the game's convention (0 = straight up, 90 = level, 180 = straight down),
         /// measured against the world so the body yaw and the rig's counter-rotation do not matter. False until
         /// the rig is live and has a head pose.

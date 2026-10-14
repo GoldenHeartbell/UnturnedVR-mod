@@ -207,6 +207,52 @@ namespace UnturnedVR.VR
             return true;
         }
 
+        /// <summary>
+        /// The equipped gun's own frame in world space: forward along the barrel (the muzzle axis of its Barrel hook), up towards
+        /// its sight when it has one, else the up of <paramref name="fallback"/> made square to the barrel. For hanging things on
+        /// the gun so they are straight with the model, whatever hold rotation the animation gave it. False if not resolved.
+        /// </summary>
+        public static bool TryGetGunFrame(Player player, Quaternion fallback, out Quaternion frame)
+        {
+            frame = fallback;
+            Transform model = player != null && player.equipment != null ? player.equipment.firstModel : null;
+            if (model == null)
+            {
+                return false;
+            }
+            if (model != cachedModel)
+            {
+                Resolve(model);
+            }
+            if (barrel == null)
+            {
+                return false;
+            }
+
+            Vector3 direction = barrel.TransformDirection(localDirection).normalized;
+            Vector3 up = fallback * Vector3.up;
+            Transform sight = cachedAttachments != null
+                ? (cachedAttachments.aimHook != null ? cachedAttachments.aimHook
+                    : cachedAttachments.viewHook != null ? cachedAttachments.viewHook : cachedAttachments.sightHook)
+                : null;
+            if (sight != null)
+            {
+                Vector3 toSight = Vector3.ProjectOnPlane(sight.position - barrel.position, direction);
+                if (toSight.sqrMagnitude > 0.000025f)
+                {
+                    up = toSight;
+                }
+            }
+
+            up = Vector3.ProjectOnPlane(up, direction);
+            if (direction.sqrMagnitude < 0.5f || up.sqrMagnitude < 0.0001f)
+            {
+                return false;
+            }
+            frame = Quaternion.LookRotation(direction, up);
+            return true;
+        }
+
         private static void Resolve(Transform model)
         {
             barrel = null;

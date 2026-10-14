@@ -69,6 +69,8 @@ namespace UnturnedVR.VR
             public Quaternion HookRestRotation;
             public Vector3 UpperAxis;            // direction (in Upper's local space) from Upper to Lower
             public Vector3 LowerAxis;            // direction (in Lower's local space) from Lower to Hook
+            public Vector3 TopLocal;             // the forearm block's top face (in Lower's local space): the rig's up at resolve
+            public Vector3 InnerLocal;           // the face that looks at the body when the arm is held forward (Lower's local space)
         }
 
         private static VRArms instance;
@@ -100,7 +102,7 @@ namespace UnturnedVR.VR
         private bool resolved;
         private bool itemCalibrated;
         private const float SupportHandSideShift = 0f; // second hand sits this far to its own side of the grip point (m)
-        private const float SupportHandRoll = 90f;          // forearm twist of the second hand (degrees, sign by side)
+        private const float SupportHandRoll = 30f;          // GUESS: forearm twist of the second hand away from top-up (degrees, sign by side)
         private const float TwoHandMinSpan = 0.08f;  // hands closer than this: no two-hand aim (m)
         private const float TwoHandFullSpan = 0.18f; // from here on the barrel points fully at the other hand
         private bool itemIsGun;
@@ -230,6 +232,9 @@ namespace UnturnedVR.VR
                 + (swapped ? " (sides swapped)" : "")
                 + ". rest offsets (arm/hand/hook) left: " + left.UpperRestPosition + " " + left.LowerRestPosition + " " + left.HookRestPosition
                 + ", right: " + right.UpperRestPosition + " " + right.LowerRestPosition + " " + right.HookRestPosition + ".");
+            VRLog.Info("arms: forearm top face (elbow bone local) left " + left.TopLocal.ToString("0.00") + ", right " + right.TopLocal.ToString("0.00")
+                + "; forearm axis left " + left.LowerAxis.ToString("0.00") + ", right " + right.LowerAxis.ToString("0.00")
+                + "; inner face left " + left.InnerLocal.ToString("0.00") + ", right " + right.InnerLocal.ToString("0.00") + ".");
             return true;
         }
 
@@ -259,6 +264,50 @@ namespace UnturnedVR.VR
             arm.HookRestRotation = hook.localRotation;
             arm.UpperAxis = lower.localPosition.normalized;
             arm.LowerAxis = hook.localPosition.normalized;
+
+            // Which face of the forearm block is the top: the one that points up in the rest pose (T-pose, arms out to the
+            // sides, so up is square to the arm). The block's roll later comes only from the smallest swing, so this face
+            // keeps pointing up while the arm points forward. GUESS that the rest pose is upright; logged in Resolve.
+            Vector3 top = Vector3.ProjectOnPlane(Quaternion.Inverse(lower.rotation) * root.up, arm.LowerAxis);
+            arm.TopLocal = top.sqrMagnitude > 0.0001f ? top.normalized : Vector3.up;
+
+            // Inner face: from the T-pose (arm out to its side, top up), turning the arm forward carries the face with
+            // normal cross(top, axis) towards the body on the arm that lies out to the viewer's left, and the opposite
+            // face on the one out to the right. GUESS, logged in Resolve.
+            Vector3 axisWorld = lower.rotation * arm.LowerAxis;
+            float inwardSign = Vector3.Dot(axisWorld, root.right) < 0f ? 1f : -1f;
+            arm.InnerLocal = (inwardSign * Vector3.Cross(arm.TopLocal, arm.LowerAxis)).normalized;
+            return true;
+        }
+
+        /// <summary>
+        /// The forearm block (elbow to hook) of the arm that follows this hand, for hanging something flat on it: its
+        /// transform (follows the arm whenever the arm is posed), the direction towards the hand and the top face, both in
+        /// that transform's local space. False while the arms are not driven by VR.
+        /// </summary>
+        internal static bool TryGetForearm(int hand, out Transform forearm, out Vector3 axisLocal, out Vector3 topLocal, out Vector3 innerLocal)
+        {
+            forearm = null;
+            axisLocal = Vector3.forward;
+            topLocal = Vector3.up;
+            innerLocal = Vector3.forward;
+            VRArms self = instance;
+            if (self == null || !self.running)
+            {
+                return false;
+            }
+
+            // The rig's "Left" arm is on the viewer's right when swapped (same pairing as Apply).
+            Arm arm = (hand == VRHands.Left) != self.swapped ? self.left : self.right;
+            if (arm.Lower == null)
+            {
+                return false;
+            }
+
+            forearm = arm.Lower;
+            axisLocal = arm.LowerAxis;
+            topLocal = arm.TopLocal;
+            innerLocal = arm.InnerLocal;
             return true;
         }
 
@@ -347,6 +396,10 @@ namespace UnturnedVR.VR
             VRBinoculars.PlaceCamera();
             VRLaser.Update(); // the laser dot follows the muzzle; the game placed it from the head earlier this frame
             VRAttachMenu.CachePanelPose(head.position); // the gun is in its final place now
+            if (allowCalibrate)
+            {
+                VRWristStatus.ArmsPosed(); // the wrist panel's gate reads the forearm in this final pose
+            }
 
             if (!loggedFirstApply)
             {
@@ -495,8 +548,9 @@ namespace UnturnedVR.VR
         }
 
         // The hand (hook) goes to target; forward is the way the forearm should roughly point (elbow side).
-        // roll: extra twist of the forearm about its own axis in degrees (0 for a hand on a controller).
-        private void DriveArmTo(Arm arm, Vector3 target, Vector3 forward, Quaternion yaw, float side, float roll = 0f)
+        // roll: extra twist of the forearm about its own axis in degrees (0 for a hand on a controller). With levelWeight > 0
+        // the roll is measured from "top face up" instead of from the smallest swing, blended in by levelWeight.
+        private void DriveArmTo(Arm arm, Vector3 target, Vector3 forward, Quaternion yaw, float side, float roll = 0f, float levelWeight = 0f)
         {
             // The shoulder joint (*_Arm) stays where the skin expects it: pivot at rest, *_Arm at its rest offset.
             arm.Pivot.SetLocalPositionAndRotation(arm.PivotRestPosition, arm.PivotRestRotation);
@@ -540,9 +594,21 @@ namespace UnturnedVR.VR
 
             Quaternion lowerRest = upperRotation * arm.LowerRestRotation;
             Quaternion lowerRotation = Quaternion.FromToRotation(lowerRest * arm.LowerAxis, hook - elbow) * lowerRest;
-            if (roll != 0f)
+            Vector3 forearmAxis = (hook - elbow).normalized;
+            Vector3 upAcross = Vector3.ProjectOnPlane(Vector3.up, forearmAxis);
+            if (levelWeight > 0f && upAcross.sqrMagnitude > 0.04f)
             {
-                lowerRotation = Quaternion.AngleAxis(roll, (hook - elbow).normalized) * lowerRotation;
+                // The top face is put straight towards the world's up (then turned by roll), whatever twist the smallest
+                // swing left in the arm; the swing's own twist is what made the arm swirl when it points across the body.
+                Vector3 desiredTop = Quaternion.AngleAxis(roll, forearmAxis) * upAcross.normalized;
+                Vector3 currentTop = lowerRotation * arm.TopLocal;
+                float angle = Vector3.SignedAngle(currentTop, desiredTop, forearmAxis);
+                Quaternion leveled = Quaternion.AngleAxis(angle, forearmAxis) * lowerRotation;
+                lowerRotation = Quaternion.Slerp(lowerRotation, leveled, levelWeight);
+            }
+            else if (roll != 0f)
+            {
+                lowerRotation = Quaternion.AngleAxis(roll, forearmAxis) * lowerRotation;
             }
             arm.Lower.rotation = lowerRotation;
         }
@@ -647,6 +713,11 @@ namespace UnturnedVR.VR
             }
             rotation *= itemToRoot;
 
+            if (itemIsGun)
+            {
+                LogGunPose(anchor, position, rotation, aimFrame, twoHandWeight > 0f);
+            }
+
             // Someone grabbed or let go: glide from where the item was to its new place instead of jumping.
             if (VRHold.Version != seenHoldVersion)
             {
@@ -704,10 +775,51 @@ namespace UnturnedVR.VR
                     Vector3 grip = SupportPoint + outward * SupportHandSideShift;
                     Vector3 target = Vector3.Lerp(offAnchor.position, grip, twoHandWeight);
                     Vector3 elbowDirection = (-(aimFrame * Vector3.forward) * 0.4f + outward * 0.9f + Vector3.down * 0.5f).normalized;
-                    DriveArmTo(onRigLeft ? left : right, target, -elbowDirection, yaw, side, -side * SupportHandRoll * twoHandWeight);
+                    DriveArmTo(onRigLeft ? left : right, target, -elbowDirection, yaw, side, -side * SupportHandRoll, twoHandWeight);
                     lastModel.SetPositionAndRotation(position, rotation);
                 }
             }
+
+            if (itemIsGun)
+            {
+                // The gun's ammo / fire mode panel hangs on the model's origin in the barrel frame (blend included).
+                VRWristStatus.GunPosed(position, rotation * Quaternion.Inverse(itemToRoot));
+            }
+        }
+
+        // Diagnostic for "the gun points more to the right in the left hand": logs, once per change of hand / grip / model,
+        // where the gun sits relative to the controller anchor it is posed on (the same numbers for both hands mean the
+        // mod adds nothing hand specific). Euler angles are in the anchor's frame: x = pitch (positive = down),
+        // y = yaw (positive = right), z = roll.
+        private int loggedPoseKey = -1;
+        private Transform loggedPoseModel;
+
+        private void LogGunPose(Transform anchor, Vector3 position, Quaternion rotation, Quaternion aimFrame, bool twoHanded)
+        {
+            int key = ItemHand * 2 + (twoHanded ? 1 : 0);
+            if (key == loggedPoseKey && lastModel == loggedPoseModel)
+            {
+                return;
+            }
+            loggedPoseKey = key;
+            loggedPoseModel = lastModel;
+
+            Quaternion inverse = Quaternion.Inverse(anchor.rotation);
+            Vector3 modelEuler = Wrap((inverse * rotation).eulerAngles);
+            Vector3 barrelEuler = Wrap((inverse * aimFrame).eulerAngles);
+            Vector3 offset = inverse * (position - anchor.position);
+            VRLog.Info("gun pose: " + lastModel.name + " in the " + (ItemHand == VRHands.Left ? "LEFT" : "RIGHT") + " hand, "
+                + (twoHanded ? "two-handed (barrel aimed at the other hand)" : "one hand")
+                + ". vs controller (pitch/yaw/roll deg): model " + modelEuler.ToString("0.0")
+                + ", barrel axis " + barrelEuler.ToString("0.0")
+                + "; class offset " + gunPose.Offset.ToString("0.000") + " rot " + Wrap(gunPose.Rotation.eulerAngles).ToString("0.0")
+                + "; hold rotation " + Wrap(itemToRoot.eulerAngles).ToString("0.0")
+                + "; model position vs controller (right/up/fwd m) " + offset.ToString("0.000"));
+        }
+
+        private static Vector3 Wrap(Vector3 euler)
+        {
+            return new Vector3(Mathf.DeltaAngle(0f, euler.x), Mathf.DeltaAngle(0f, euler.y), Mathf.DeltaAngle(0f, euler.z));
         }
 
         private void RestoreItemScale()

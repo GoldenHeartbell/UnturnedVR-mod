@@ -23,6 +23,19 @@ namespace UnturnedVR.VR
         public const int BuildingRotateSpeedMinPercent = 100;
         public const int BuildingRotateSpeedMaxPercent = 300;
 
+        private const string WristStatusKey = "UnturnedVR.hud.wristStatus";
+        private const string VehicleDashKey = "UnturnedVR.hud.vehicleDash";
+
+        private const string GunDisplayKey = "UnturnedVR.hud.gunDisplay";
+
+        private const string GunDisplayModeKey = "UnturnedVR.hud.gunDisplayMode";
+
+        private static bool gunDisplayLoaded;
+        private static bool gunDisplayValue = true;
+        private static bool dashLoaded;
+        private static bool dashValue = true;
+        private static bool wristLoaded;
+        private static bool wristValue = true;
         private static bool markersLoaded;
         private static bool markersSaved;
         private static bool markersValue;
@@ -136,6 +149,100 @@ namespace UnturnedVR.VR
                 return BuildingRotateSpeedMinPercent;
             }
             return percent > BuildingRotateSpeedMaxPercent ? BuildingRotateSpeedMaxPercent : (int)percent;
+        }
+
+        /// <summary>
+        /// Health, food, water... and the status icons: true (the default) = on the left wrist plus a glance reveal at the
+        /// edge of the view (VRWristStatus), false = they stay on the flat HUD panel like the rest of the HUD.
+        /// </summary>
+        public static bool WristStatus
+        {
+            get
+            {
+                if (!wristLoaded)
+                {
+                    wristLoaded = true;
+                    bool saved;
+                    if (ConvenientSavedata.get().read(WristStatusKey, out saved)) // missing = on
+                    {
+                        wristValue = saved;
+                    }
+                }
+                return wristValue;
+            }
+        }
+
+        public static void SetWristStatus(bool on)
+        {
+            wristLoaded = true;
+            wristValue = on;
+            ConvenientSavedata.get().write(WristStatusKey, on);
+        }
+
+        /// <summary>
+        /// The vehicle box (fuel, speed, health...): true (the default) = a dashboard in the vehicle to the right of the
+        /// wheel (VRWristStatus), false = it stays on the flat HUD panel.
+        /// </summary>
+        public static bool VehicleDash
+        {
+            get
+            {
+                if (!dashLoaded)
+                {
+                    dashLoaded = true;
+                    bool saved;
+                    if (ConvenientSavedata.get().read(VehicleDashKey, out saved)) // missing = on
+                    {
+                        dashValue = saved;
+                    }
+                }
+                return dashValue;
+            }
+        }
+
+        public static void SetVehicleDash(bool on)
+        {
+            dashLoaded = true;
+            dashValue = on;
+            ConvenientSavedata.get().write(VehicleDashKey, on);
+        }
+
+        // The saved value is the old three-state mode number (0 gun side, 1 behind grip, 2 HUD panel), kept so saved settings
+        // still read: 2 means the box stays on the HUD panel, anything else means it is on the gun's side.
+        private const long GunDisplayModeSide = 0;
+        private const long GunDisplayModeHud = 2;
+
+        /// <summary>
+        /// The gun's ammo / fire mode / magazine box is shown on the inner side of the gun, seen when the gun is twisted
+        /// inwards (VRWristStatus), instead of staying on the flat HUD panel. The default.
+        /// </summary>
+        public static bool GunDisplay
+        {
+            get
+            {
+                if (!gunDisplayLoaded)
+                {
+                    gunDisplayLoaded = true;
+                    long mode;
+                    bool old;
+                    if (ConvenientSavedata.get().read(GunDisplayModeKey, out mode))
+                    {
+                        gunDisplayValue = mode != GunDisplayModeHud;
+                    }
+                    else if (ConvenientSavedata.get().read(GunDisplayKey, out old))
+                    {
+                        gunDisplayValue = old; // the first version's on / off setting
+                    }
+                }
+                return gunDisplayValue;
+            }
+        }
+
+        public static void SetGunDisplay(bool on)
+        {
+            gunDisplayLoaded = true;
+            gunDisplayValue = on;
+            ConvenientSavedata.get().write(GunDisplayModeKey, on ? GunDisplayModeSide : GunDisplayModeHud);
         }
 
         /// <summary>Writes the game's savedata file now if something changed (the game also does it on its own schedule).</summary>

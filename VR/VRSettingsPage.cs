@@ -18,6 +18,9 @@ namespace UnturnedVR.VR
         private ISleekToggle markersToggle;
         private SleekButtonState attachModeButton;
         private SleekButtonState buildAimButton;
+        private SleekButtonState wristStatusButton;
+        private SleekButtonState vehicleDashButton;
+        private SleekButtonState gunDisplayButton;
         private ISleekSlider rotateSpeedSlider;
 
         /// <summary>The page is on screen (the pause menu is hidden behind it).</summary>
@@ -121,7 +124,53 @@ namespace UnturnedVR.VR
             rotateSpeedSlider.AddLabel(RotateSpeedLabel(VRSettings.BuildingRotateSpeedPercent), ESleekSide.RIGHT);
             rotateSpeedSlider.OnValueChanged += OnRotateSpeedDragged;
             box.AddChild(rotateSpeedSlider);
-            verticalOffset += 30;
+            verticalOffset += 40;
+
+            ISleekBox hud = Glazier.Get().CreateBox();
+            hud.PositionOffset_Y = verticalOffset;
+            hud.SizeOffset_X = 400;
+            hud.SizeOffset_Y = 30;
+            hud.Text = "HUD";
+            box.AddChild(hud);
+            verticalOffset += 40;
+
+            // Health, food, water and the status icons: on the left wrist (look at it) plus a short reveal at the edge of
+            // the view when something needs attention, or left on the flat HUD panel. States: 0 = Wrist, 1 = HUD panel.
+            wristStatusButton = new SleekButtonState(new GUIContent("Wrist"), new GUIContent("HUD panel"));
+            wristStatusButton.PositionOffset_Y = verticalOffset;
+            wristStatusButton.SizeOffset_X = 200;
+            wristStatusButton.SizeOffset_Y = 30;
+            wristStatusButton.AddLabel("Status display", ESleekSide.RIGHT);
+            wristStatusButton.tooltip = "Wrist: health, food, water and status icons are on your left wrist (look at it with the hand free) and fade in at the edge of the view when something needs attention. HUD panel: they stay on the flat HUD.";
+            wristStatusButton.state = VRSettings.WristStatus ? 0 : 1;
+            wristStatusButton.onSwappedState = OnWristStatusSwapped;
+            box.AddChild(wristStatusButton);
+            verticalOffset += 40;
+
+            // The vehicle box (fuel, speed, health): a dashboard to the right of the wheel, or left on the flat HUD panel.
+            vehicleDashButton = new SleekButtonState(new GUIContent("Dashboard"), new GUIContent("HUD panel"));
+            vehicleDashButton.PositionOffset_Y = verticalOffset;
+            vehicleDashButton.SizeOffset_X = 200;
+            vehicleDashButton.SizeOffset_Y = 30;
+            vehicleDashButton.AddLabel("Vehicle display", ESleekSide.RIGHT);
+            vehicleDashButton.tooltip = "Dashboard: fuel, speed and vehicle health sit in the vehicle to the right of the steering wheel, fixed in place. HUD panel: they stay on the flat HUD.";
+            vehicleDashButton.state = VRSettings.VehicleDash ? 0 : 1;
+            vehicleDashButton.onSwappedState = OnVehicleDashSwapped;
+            box.AddChild(vehicleDashButton);
+            verticalOffset += 40;
+
+            // The gun's box (ammo, fire mode, magazine): on the inside of the gun (twist it to look), or left on the flat HUD
+            // panel. States: 0 = Gun side, 1 = HUD panel.
+            gunDisplayButton = new SleekButtonState(new GUIContent("Gun side"), new GUIContent("HUD panel"));
+            gunDisplayButton.PositionOffset_Y = verticalOffset;
+            gunDisplayButton.SizeOffset_X = 200;
+            gunDisplayButton.SizeOffset_Y = 30;
+            gunDisplayButton.AddLabel("Gun display", ESleekSide.RIGHT);
+            gunDisplayButton.tooltip = "Gun side: ammo, fire mode and magazine are on the inside of the gun, seen when you twist the gun inwards. HUD panel: they stay on the flat HUD.";
+            gunDisplayButton.state = VRSettings.GunDisplay ? 0 : 1;
+            gunDisplayButton.onSwappedState = OnGunDisplaySwapped;
+            box.AddChild(gunDisplayButton);
+            verticalOffset += 40;
 
             box.ContentSizeOffset = new Vector2(0f, verticalOffset - 10);
 
@@ -149,6 +198,9 @@ namespace UnturnedVR.VR
             markersToggle.Value = VRHolsters.MarkersEnabled;
             attachModeButton.state = AttachModeState(VRSettings.AttachMenuHold);
             buildAimButton.state = VRSettings.BuildingHandBased ? 1 : 0;
+            wristStatusButton.state = VRSettings.WristStatus ? 0 : 1;
+            vehicleDashButton.state = VRSettings.VehicleDash ? 0 : 1;
+            gunDisplayButton.state = VRSettings.GunDisplay ? 0 : 1;
             rotateSpeedSlider.Value = RotateSpeedToSlider(VRSettings.BuildingRotateSpeedPercent);
             rotateSpeedSlider.UpdateLabel(RotateSpeedLabel(VRSettings.BuildingRotateSpeedPercent));
             pauseContainer.AnimateOutOfView(0, 1);
@@ -184,6 +236,27 @@ namespace UnturnedVR.VR
             bool hand = index == 1;
             VRSettings.SetBuildingHandBased(hand);
             VRLog.Info("settings page: building aim " + (hand ? "hand based" : "head based") + ".");
+        }
+
+        private void OnWristStatusSwapped(SleekButtonState button, int index)
+        {
+            bool wrist = index == 0;
+            VRSettings.SetWristStatus(wrist);
+            VRLog.Info("settings page: status display " + (wrist ? "wrist" : "HUD panel") + ".");
+        }
+
+        private void OnVehicleDashSwapped(SleekButtonState button, int index)
+        {
+            bool dash = index == 0;
+            VRSettings.SetVehicleDash(dash);
+            VRLog.Info("settings page: vehicle display " + (dash ? "dashboard" : "HUD panel") + ".");
+        }
+
+        private void OnGunDisplaySwapped(SleekButtonState button, int index)
+        {
+            bool side = index == 0;
+            VRSettings.SetGunDisplay(side);
+            VRLog.Info("settings page: gun display " + (side ? "gun side" : "HUD panel") + ".");
         }
 
         private static float RotateSpeedToSlider(int percent)

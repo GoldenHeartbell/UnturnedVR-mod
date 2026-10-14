@@ -135,6 +135,7 @@ namespace UnturnedVR.VR
         private bool hintRecentering;
         private bool loggedHint;
         private VRWorldLabels worldLabels;                                                  // teammate names and hit markers in the world
+        private VRWristStatus wristStatus;                                                  // health etc. on the left wrist + glance reveal
         private readonly System.Collections.Generic.List<Rect> hudHoles = new System.Collections.Generic.List<Rect>();
         private readonly System.Collections.Generic.List<Rect> shownHoles = new System.Collections.Generic.List<Rect>();
         private RenderTexture uiTexture;
@@ -292,6 +293,7 @@ namespace UnturnedVR.VR
             if (Input.GetKeyDown(RecenterKey))
             {
                 needsRecenter = true;
+                VRWristStatus.RecaptureDash();
             }
 
             UpdateAttachPanel(eye.transform);
@@ -402,6 +404,19 @@ namespace UnturnedVR.VR
                 else
                 {
                     worldLabels.Hide();
+                }
+            }
+            // Health, food, status icons: on the wrist / glance reveal instead of the HUD panel (their rects are cut out too).
+            if (wristStatus != null)
+            {
+                if (inGame && (VRSettings.WristStatus || VRSettings.VehicleDash || VRSettings.GunDisplay) &&PlayerUI.window != null && PlayerUI.window.isEnabled
+                    && PlayerUI.container != null && PlayerUI.container.IsVisible)
+                {
+                    wristStatus.Update(eye, CanvasSize, PanelWidth / PanelDistance, hudHoles);
+                }
+                else
+                {
+                    wristStatus.Hide();
                 }
             }
             ApplyHudHoles();
@@ -872,6 +887,9 @@ namespace UnturnedVR.VR
 
             // Teammate names and hit markers: cropped from the same texture, hung in the world (VRWorldLabels).
             worldLabels = new VRWorldLabels(transform, panelMaterial, panelLayer);
+
+            // Health, food, water, status icons: cropped from the same texture onto the left wrist / the glance reveal.
+            wristStatus = new VRWristStatus(transform, panelMaterial, panelLayer);
         }
 
         private void ResizePanel()

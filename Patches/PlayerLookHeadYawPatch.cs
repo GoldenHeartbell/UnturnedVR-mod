@@ -19,6 +19,9 @@ namespace UnturnedVR.Patches
     {
         private const float SmoothTurnSpeed = 120f; // degrees per second at full deflection
 
+        private static bool wasSeated;
+        private static bool wasBodyFollowsHead;
+
         private static void Prefix(PlayerLook __instance, ref float ____yaw, ref float ____pitch)
         {
             if (!VR.VRState.IsActive || __instance.channel == null || !__instance.channel.IsLocalPlayer)
@@ -34,7 +37,23 @@ namespace UnturnedVR.Patches
                 && stance != EPlayerStance.SITTING
                 && !__instance.player.life.isDead;
 
+            bool seated = stance == EPlayerStance.DRIVING || stance == EPlayerStance.SITTING;
+
             ____yaw += VR.VRRig.ConsumeHeadYawDelta(bodyFollowsHead);
+
+            // Seats: the body does not follow the head there, so the view and the body drift apart while you look
+            // around. Sitting down puts the view straight ahead in the seat; getting out turns the body to where you
+            // look (the game puts it at the exit angle), so the stick moves you where you face.
+            if (seated && !wasSeated)
+            {
+                VR.VRRig.AlignViewToBody();
+            }
+            else if (bodyFollowsHead && !wasBodyFollowsHead)
+            {
+                ____yaw += VR.VRRig.AlignBodyToView();
+            }
+            wasSeated = seated;
+            wasBodyFollowsHead = bodyFollowsHead;
 
             // Absolute, so it cannot drift; PlayerLook.clampPitch still applies the stance limits afterwards.
             if (bodyFollowsHead && !__instance.IsControllingFreecam && VR.VRRig.TryGetHeadPitch(out float headPitch))
