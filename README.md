@@ -2,7 +2,7 @@
 
 A VR mod for Unturned (Unity/Mono). It runs on top of the normal Steam version of the game and only adds files: a module in `Modules/UnturnedVR/` plus the XR assets it needs. No core game files are modified.
 
-**Status:** work in progress. Singleplayer only. Do not use it on BattlEye servers; launch the game without BattlEye.
+**Status:** work in progress. Do not use it on BattlEye servers; launch the game without BattlEye.
 
 This repository holds the source code of the module. The install zip is on the [Releases](../../releases) page.
 
