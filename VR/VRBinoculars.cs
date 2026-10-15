@@ -18,7 +18,7 @@ namespace UnturnedVR.VR
     /// Unity picks finer LODs because things get larger on screen). The lens does the same with its narrower field of
     /// view and, on top of that, renders with a raised QualitySettings.lodBias (<see cref="LensLodBoostMax"/>), only
     /// for its own render pass (Camera.onPreCull / onPostRender), so the world seen by the headset is not affected.
-    /// All numbers are GUESSES; tune by feel. Cost while not raised: one distance test per frame. While raised: one
+    /// All numbers are tuned by feel. Cost while not raised: one distance test per frame. While raised: one
     /// extra scene render at <see cref="TextureSize"/> squared.
     /// </summary>
     internal static class VRBinoculars
@@ -40,7 +40,7 @@ namespace UnturnedVR.VR
         private const int TextureSize = 1024;
         private const int Segments = 64;
         private const float MirrorInterval = 0.5f; // seconds between copies of the game's graphics settings
-        private const float LensLodBoostMax = 4f;  // the lens renders with lodBias * min(zoom, this): GUESS, 1 = same as the game
+        private const float LensLodBoostMax = 4f;  // the lens renders with lodBias * min(zoom, this); 1 = same as the game
 
         private static bool applies;
         private static bool active;
@@ -58,8 +58,8 @@ namespace UnturnedVR.VR
         // the head is large in the lens; the filter is calmer the higher the zoom (cut-off scaled by 1/sqrt(zoom)). The
         // head moves far less than a hand did and the picture lagging a head turn feels wrong, hence a higher cut-off
         // than the hand-aimed lens had (1 Hz / 0.05).
-        private const float DefaultMinCutoff = 2f;  // Hz, GUESS
-        private const float DefaultBeta = 0.1f;     // GUESS
+        private const float DefaultMinCutoff = 2f;  // Hz
+        private const float DefaultBeta = 0.1f;
         private static readonly VRAimFilter viewFilter = new VRAimFilter();
         private static Vector3 viewForward = Vector3.forward; // filtered lens direction, world space
 

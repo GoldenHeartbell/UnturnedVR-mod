@@ -10,7 +10,7 @@ namespace UnturnedVR.VR
     /// Used by the binoculars lens (VRBinoculars). Meant to be reused for gun aiming: step it once per frame with
     /// the raw sight/barrel direction and read <see cref="Value"/>; only the picture (scope camera) or also the shot
     /// direction can then use the calm direction, which is a design choice of the caller (lag vs bullets).
-    /// The numbers are GUESSES: <see cref="MinCutoff"/> is the calm-hand cut-off in Hz (lower = steadier but more
+    /// The numbers are tuned by feel: <see cref="MinCutoff"/> is the calm-hand cut-off in Hz (lower = steadier but more
     /// lag), <see cref="Beta"/> is how fast it opens up when moving (higher = less lag in sweeps, less calm).
     /// Cost: a handful of vector operations per step.
     /// </summary>

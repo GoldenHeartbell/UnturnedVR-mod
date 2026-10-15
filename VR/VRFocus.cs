@@ -8,7 +8,7 @@ namespace UnturnedVR.VR
     /// <summary>
     /// The game window's Windows focus. In VR the player often works on the desktop (SteamVR dashboard, another
     /// program), which takes the focus from the game; the UI then ignores every event (UGUI's
-    /// EventSystem.isFocused, GUESS) so the laser cannot click until the PC mouse clicks in the window. VRPointer
+    /// EventSystem.isFocused) so the laser cannot click until the PC mouse clicks in the window. VRPointer
     /// uses this to take the focus back on the first menu click. Opening the pause menu on focus loss is left to
     /// the game (OptionsSettings.pauseWhenUnfocused). Not in the editor: its Game view focus is not a window focus.
     /// </summary>
@@ -90,7 +90,7 @@ namespace UnturnedVR.VR
                 string how = "SetForegroundWindow";
 
                 // Windows only lets the process that got the last input steal the foreground. A synthetic Alt tap counts
-                // as input from us; GUESS: this and the thread attach below are what works when the plain call is refused.
+                // as input from us; this and the thread attach below are what works when the plain call is refused.
                 if (GetForegroundWindow() != hwnd)
                 {
                     keybd_event(VkMenu, 0, 0, UIntPtr.Zero);

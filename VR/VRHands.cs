@@ -18,7 +18,7 @@ namespace UnturnedVR.VR
         /// Controller -> hand pose. Euler X is the tilt in degrees, positive = forward axis pitched DOWN. The raw
         /// controller forward points about 25 degrees above where the hand points when the arm is held out, so
         /// the arms, the held item, the pickup ray and the menu/inventory laser (VRPointer) all use this tilt.
-        /// Position offset is a GUESS (zero). Tune in headset.
+        /// Position offset is zero. Tune in headset.
         /// </summary>
         public static Vector3 GripOffsetPosition = Vector3.zero;
         public static Vector3 GripOffsetEuler = new Vector3(12f, 0f, 0f);

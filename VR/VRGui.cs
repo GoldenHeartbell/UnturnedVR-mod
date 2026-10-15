@@ -17,7 +17,7 @@ namespace UnturnedVR.VR
     /// </summary>
     internal class VRGui : MonoBehaviour
     {
-        // Guesses to tune in-headset.
+        // Tune in-headset.
         private const float PanelDistance = 2.0f;
         private const float PanelWidth = 2.4f;
         // Menu / loading screen: bigger, and fixed to the camera instead of following the head.
@@ -25,7 +25,7 @@ namespace UnturnedVR.VR
         private const float MenuPanelWidth = 3.6f;
         private const float MenuReanchorDistance = 1.5f;
         // NPC dialogue, quest and vendor screens: pinned like the menu, but close (about the hint panel's distance) and
-        // with the same apparent size (1.6 m at 1 m ~ 3.6 m at 2.2 m). Guesses to tune in-headset.
+        // with the same apparent size (1.6 m at 1 m ~ 3.6 m at 2.2 m). Tune in-headset.
         private const float NpcPanelDistance = 1.0f;
         private const float NpcPanelWidth = 1.6f;
         // Loading screen: how long to wait for the first head pose before placing the panel anyway
@@ -34,12 +34,12 @@ namespace UnturnedVR.VR
         private const float FollowDeadzoneDegrees = 35f;
         private const float FollowSharpness = 3f;
         private const KeyCode RecenterKey = KeyCode.F10;
-        // The pickup label panel, head-locked in front of the eyes. Guesses to tune in-headset.
+        // The pickup label panel, head-locked in front of the eyes. Tune in-headset.
         private const float HintDistance = 1.0f;
         private const float HintHeight = -0.12f;
         private const float HintScale = 1.5f;
         // A hint about an object hangs above it in the world; one without an object keeps a spot in front of the body
-        // (HintDistance / HintHeight) that only moves when you turn far away or walk off. Guesses to tune in-headset.
+        // (HintDistance / HintHeight) that only moves when you turn far away or walk off. Tune in-headset.
         private const float HintLift = 0.15f;              // gap between the top of the object and the label's centre
         private const float HintMaxAbove = 0.9f;           // never higher than this above the object's pivot
         private const float HintMinViewDistance = 0.6f;   // the label is scaled with its distance, between these two

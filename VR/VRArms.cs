@@ -31,11 +31,11 @@ namespace UnturnedVR.VR
     [DefaultExecutionOrder(500)] // after the Animation component and PlayerAnimator.LateUpdate
     internal class VRArms : MonoBehaviour
     {
-        /// <summary>Neck pivot relative to the eye, in the yaw frame (right, up, forward). GUESS, tune in headset.</summary>
+        /// <summary>Neck pivot relative to the eye, in the yaw frame (right, up, forward). Tune in headset.</summary>
         internal static readonly Vector3 NeckOffset = new Vector3(0f, -0.28f, -0.05f);
         /// <summary>
         /// Uniform scale of the arm rig. Shoulder joint to hook is 0.880 unscaled (0.372 + 0.508), so reach = 0.88 x scale;
-        /// a human arm is about 0.6 and the arm mesh is 0.375 thick unscaled. GUESS, tune (reach vs thickness).
+        /// a human arm is about 0.6 and the arm mesh is 0.375 thick unscaled. Tune (reach vs thickness).
         /// </summary>
         private const float ArmScale = 0.65f;
         /// <summary>
@@ -102,7 +102,7 @@ namespace UnturnedVR.VR
         private bool resolved;
         private bool itemCalibrated;
         private const float SupportHandSideShift = 0f; // second hand sits this far to its own side of the grip point (m)
-        private const float SupportHandRoll = 30f;          // GUESS: forearm twist of the second hand away from top-up (degrees, sign by side)
+        private const float SupportHandRoll = 30f;          // forearm twist of the second hand away from top-up (degrees, sign by side)
         private const float TwoHandMinSpan = 0.08f;  // hands closer than this: no two-hand aim (m)
         private const float TwoHandFullSpan = 0.18f; // from here on the barrel points fully at the other hand
         private bool itemIsGun;
@@ -267,13 +267,13 @@ namespace UnturnedVR.VR
 
             // Which face of the forearm block is the top: the one that points up in the rest pose (T-pose, arms out to the
             // sides, so up is square to the arm). The block's roll later comes only from the smallest swing, so this face
-            // keeps pointing up while the arm points forward. GUESS that the rest pose is upright; logged in Resolve.
+            // keeps pointing up while the arm points forward. Assumes the rest pose is upright; logged in Resolve.
             Vector3 top = Vector3.ProjectOnPlane(Quaternion.Inverse(lower.rotation) * root.up, arm.LowerAxis);
             arm.TopLocal = top.sqrMagnitude > 0.0001f ? top.normalized : Vector3.up;
 
             // Inner face: from the T-pose (arm out to its side, top up), turning the arm forward carries the face with
             // normal cross(top, axis) towards the body on the arm that lies out to the viewer's left, and the opposite
-            // face on the one out to the right. GUESS, logged in Resolve.
+            // face on the one out to the right. Logged in Resolve.
             Vector3 axisWorld = lower.rotation * arm.LowerAxis;
             float inwardSign = Vector3.Dot(axisWorld, root.right) < 0f ? 1f : -1f;
             arm.InnerLocal = (inwardSign * Vector3.Cross(arm.TopLocal, arm.LowerAxis)).normalized;

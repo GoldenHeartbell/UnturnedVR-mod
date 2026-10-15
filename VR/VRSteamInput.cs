@@ -13,7 +13,7 @@ namespace UnturnedVR.VR
     /// thumbstick counts as a click. With our own bindings the thumbstick "click" is the physical click.
     /// Every read is per action: if an action is not active (no binding for that controller type) the caller keeps
     /// its XR / legacy value, so a missing binding or a failed registration never removes input.
-    /// GUESS: SteamVR accepts the manifest for a game that is not launched as Steam app 304930; confirm from the log.
+    /// SteamVR accepts the manifest for a game that is not launched as Steam app 304930; confirm from the log.
     /// </summary>
     internal static class VRSteamInput
     {

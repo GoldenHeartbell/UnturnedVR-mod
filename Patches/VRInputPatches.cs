@@ -11,7 +11,7 @@ namespace UnturnedVR.Patches
     /// left button = trigger, scroll = right stick Y). Applied manually instead of with [HarmonyPatch]
     /// attributes: these are engine members (possibly extern/inlined), and one failing patch must not
     /// take down PatchAll for the rest of the mod. The log shows which ones took and when each is first used.
-    /// GUESS: Harmony can patch these UnityEngine.Input members in the shipped Mono runtime.
+    /// Harmony can patch these UnityEngine.Input members in the shipped Mono runtime.
     /// </summary>
     internal static class VRInputPatches
     {

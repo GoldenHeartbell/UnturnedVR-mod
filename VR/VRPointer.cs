@@ -14,7 +14,7 @@ namespace UnturnedVR.VR
     [DefaultExecutionOrder(-32000)] // before EventSystem.Update reads the (patched) mouse
     internal class VRPointer : MonoBehaviour
     {
-        // Guesses to tune in-headset.
+        // Tune in-headset.
         private const float LaserWidth = 0.004f;
         private const float LaserLength = 4f;
         // The laser uses the same controller tilt as the hands (VRHands.GripOffsetEuler: the raw controller

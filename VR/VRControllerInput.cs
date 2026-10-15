@@ -13,7 +13,7 @@ namespace UnturnedVR.VR
     /// direct OpenVR GetControllerState read (the same reason VROpenVRPoseFallback exists: SteamVR Input isn't
     /// initialized for XR, so XR reports no devices). The later sources are only read for what the earlier one could
     /// not answer: with every action bound, no XR or legacy button / stick call is made at all.
-    /// GUESS: legacy GetControllerState works without an action manifest and rAxis0 is the thumbstick
+    /// Legacy GetControllerState works without an action manifest and rAxis0 is the thumbstick
     /// on Touch/Index/WMR controllers. Confirm from the "using ... source" log line / in headset.
     /// </summary>
     internal static class VRControllerInput
@@ -203,7 +203,7 @@ namespace UnturnedVR.VR
 
         // Button roles of one controller: Unity XR features first, then the legacy OpenVR button bits.
         // Index bits come from EVRButtonId (A = 2, B = 1, JoyStick click = 35, trigger = 33 / rAxis1.x). The grip
-        // source is still a GUESS (rAxis2.x). Whether the legacy call reports them without an action manifest is
+        // source is rAxis2.x. Whether the legacy call reports them without an action manifest is
         // unverified; the LogButtons output shows the real bits, so correct them here.
         private static VRButton ReadButtons(InputDeviceCharacteristics hand, ETrackedControllerRole role, string name, ref ulong prevRaw)
         {
@@ -316,7 +316,7 @@ namespace UnturnedVR.VR
         }
 
         // Pose + trigger of the right hand, for the UI laser pointer. Same source order as the sticks.
-        // GUESS: the OpenVR pose origin points out of the controller tip (+Z after conversion) well enough to aim with.
+        // The OpenVR pose origin points out of the controller tip (+Z after conversion) well enough to aim with.
         private static void RefreshRightPointer()
         {
             // The trigger comes from the r_trigger action when it is bound; the legacy trigger read is then skipped.

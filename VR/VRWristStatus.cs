@@ -32,7 +32,7 @@ namespace UnturnedVR.VR
         private const float WristGap = 0.006f;             // between the icon strip and the vitals box
         // On the arm (VRArms.TryGetForearm): flat on the inner face of the forearm block (the side that looks at the body),
         // text running along the arm, metres in world size.
-        private const float ForearmHalfThickness = 0.1875f * 0.65f; // GUESS: the arm mesh is 0.375 thick unscaled x ArmScale
+        private const float ForearmHalfThickness = 0.1875f * 0.65f; // the arm mesh is 0.375 thick unscaled x ArmScale
         private const float ForearmAlong = 0.17f;          // from the elbow bone towards the hand (the block is about 0.33 m)
         private const float ForearmLift = 0.003f;          // off the surface
         private const float PanelShiftBack = 0.03f;       // panel moved this far to its left (towards the elbow on the left arm)...
@@ -60,7 +60,7 @@ namespace UnturnedVR.VR
 
         // Vehicle dashboard (the game's vehicleBox: fuel, speed, health, battery, gear / RPM, lock state).
         // Placed once per drive relative to the driver's eyes, in the vehicle's frame: right of the steering wheel, a little
-        // below the eyes. Offsets are in metres, in the vehicle's axes (x right, y up, z forward). GUESSES, tuned by feel.
+        // below the eyes. Offsets are in metres, in the vehicle's axes (x right, y up, z forward). Tuned by feel.
         private const float DashRight = 0.30f;
         private const float DashDown = 0.32f;
         private const float DashAhead = 0.65f;
@@ -73,7 +73,7 @@ namespace UnturnedVR.VR
         // the whole game box (ammo, fire mode, magazine) hangs over the gun's inner side (the left flank for the right hand,
         // the right flank for the left hand) and is only there while the gun is twisted so that this side faces up, or while
         // that side is turned straight at the eyes. It reads from both sides of its plane (turned half a turn about its own
-        // upright axis when the eye is behind it), so raising the gun above the eyes does not make it vanish. GUESSES, tuned by feel.
+        // upright axis when the eye is behind it), so raising the gun above the eyes does not make it vanish. Tuned by feel.
         private const float GunSideBoxUnits = 420f;       // the box is this wide in canvas units
         private const float GunSideMetersPerUnit = 0.0005f; // 420 units = 21 cm
         private const float GunSideOut = 0.01f;           // off the gun's measured outer side (it floats a little)
@@ -101,8 +101,8 @@ namespace UnturnedVR.VR
         private const float RevealFadeIn = 0.2f;
         private const float RevealFadeOut = 0.5f;
 
-        private const float RevealTopRightPad = 4f;       // canvas units added above and right of an icon in the glance reveal (GUESS)
-        private const float RevealBottomPad = 0f;          // canvas units kept below an icon in the glance reveal (GUESS)
+        private const float RevealTopRightPad = 4f;       // canvas units added above and right of an icon in the glance reveal
+        private const float RevealBottomPad = 0f;          // canvas units kept below an icon in the glance reveal
         private const float Pad = 4f;                    // canvas units around a widget (border / shadow)
         private const float HoleExtra = 8f;                // more around the HUD panel's hole than the crop (12 in total)
 

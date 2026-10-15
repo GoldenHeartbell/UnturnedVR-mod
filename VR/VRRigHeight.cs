@@ -27,7 +27,7 @@ namespace UnturnedVR.VR
         private float nextDiagnosticTime;
         private readonly List<InputDevice> deviceBuffer = new List<InputDevice>();
 
-        // Menu camera counts as resting below these speeds for this long (guesses to tune in headset).
+        // Menu camera counts as resting below these speeds for this long (tune in headset).
         private const float MenuStillSpeed = 0.1f;        // m/s
         private const float MenuStillTurnRate = 4f;       // degrees/s
         private const float MenuStillSeconds = 0.3f;

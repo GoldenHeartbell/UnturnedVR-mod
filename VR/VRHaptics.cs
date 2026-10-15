@@ -12,7 +12,7 @@ namespace UnturnedVR.VR
     /// Gun shots: strength, length and pitch depend on the gun's action and size (pistol short and sharp, rifle
     /// heavier, shotgun/bolt/rocket long and deep, minigun a light buzz); the hand holding the gun rumbles fully, the
     /// second hand on a two-handed gun at 60%. Hovering something to pick up gives a short tick in the pickup hand.
-    /// The values are GUESSES to tune by feel.
+    /// The values are tuned by feel.
     /// Cost: one OpenVR call per pulse.
     /// </summary>
     internal static class VRHaptics

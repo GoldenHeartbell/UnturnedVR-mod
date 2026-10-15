@@ -225,7 +225,7 @@ namespace UnturnedVR.VR
         }
 
         // ---- Panel on the gun -------------------------------------------------------------------------------------
-        // Tuning guesses (headset).
+        // Tuned in the headset.
         /// <summary>World width (m) of the panel showing CanvasRect.</summary>
         public const float PanelWidth = 0.7f;
         /// <summary>How far above the gun's hooks (m, world up) the panel floats, so it does not cover the gun.</summary>

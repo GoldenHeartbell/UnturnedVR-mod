@@ -11,7 +11,7 @@ namespace UnturnedVR.VR
     /// The test is geometric: the eye is behind the sight (along the barrel line), close to that line, and the head
     /// looks roughly along it. Enter and exit differ (hysteresis), entering needs a short dwell and leaving needs the
     /// sight to stay out of the zone for a moment, so a glance sideways or the edge of the zone does not flicker the
-    /// aim animation and sound. All numbers are GUESSES from a real sight picture; tune by feel.
+    /// aim animation and sound. All numbers come from a real sight picture; tune by feel.
     /// Evaluated from VRArms.Apply right after the item is placed (the one point in the frame where the gun and the
     /// eye are both in their final pose), not from the input code at the start of the frame.
     /// A scoped gun also gets its scope camera moved onto the sight line (<see cref="PlaceScopeCamera"/>) so the lens

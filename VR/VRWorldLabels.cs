@@ -16,13 +16,13 @@ namespace UnturnedVR.VR
     /// turned towards the eye, scaled with distance so it keeps the screen size it has on the flat game. VRGui cuts the
     /// same rectangles out of the HUD panel (the rects are added to the holes list) so each shows only once.
     /// No depth test (VRGui's overlay camera), so teammates' names show through walls, like the game's own labels.
-    /// All numbers are GUESSES; tune by feel. Cost: reflection lookups once, then a few vector operations per widget.
+    /// All numbers are tuned by feel. Cost: reflection lookups once, then a few vector operations per widget.
     /// </summary>
     internal sealed class VRWorldLabels
     {
         // The game anchors the label 3 m above the player model's position (PlayerUI.updateGroupLabels).
         private const float GroupLabelHeight = 3f;
-        // Apparent size relative to the same widget on the HUD panel (which is small at 2 m): GUESS.
+        // Apparent size relative to the same widget on the HUD panel (which is small at 2 m).
         private const float SizeScale = 2f;
         private const float LabelMinDistance = 1.5f;     // closer than this the label stops shrinking
         private const float HitmarkerMinDistance = 2f;

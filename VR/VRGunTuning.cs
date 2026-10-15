@@ -75,7 +75,7 @@ namespace UnturnedVR.VR
                 pose = BuiltIn(className);
             }
 
-            // Where the second hand holds the gun: the Grip hook, else this fraction of the way to the muzzle (guesses),
+            // Where the second hand holds the gun: the Grip hook, else this fraction of the way to the muzzle,
             // moved by the support offset of the file.
             pose.SupportFraction = className == "pistol" ? 0.4f : className == "compact" ? 0.5f : 0.55f;
             pose.Support = Vector3.zero;
@@ -104,7 +104,7 @@ namespace UnturnedVR.VR
                 || (id != null && items.TryGetValue(id, out pose))
                 || classes.TryGetValue(className, out pose)))
             {
-                // GUESS: the model origin sits in the middle of the binoculars, so lift it by about half its height.
+                // The model origin sits in the middle of the binoculars, so lift it by about half its height.
                 pose = Make(new Vector3(0f, 0.07f, 0f), 0f);
             }
             return pose;

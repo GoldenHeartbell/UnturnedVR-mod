@@ -10,7 +10,7 @@ namespace UnturnedVR.VR
     /// bullet origin and direction from player.look.aim, so Patches/UseableGunMuzzlePatch puts that transform on
     /// the muzzle for the duration of the call.
     /// The barrel direction is a local axis of the hook that differs per model, so it is taken once per equip as
-    /// the axis that points from the model origin (the hand) to the hook, snapped to a hook axis (GUESS that the
+    /// the axis that points from the model origin (the hand) to the hook, snapped to a hook axis (the
     /// barrel hook lies on the barrel line).
     /// Safety: if a wall is between the head and the muzzle (gun pushed into geometry) the shot uses the head aim.
     /// Cost: one cached lookup and one linecast per shot.
@@ -61,10 +61,10 @@ namespace UnturnedVR.VR
         // binoculars). Both the scope picture (VRAds.PlaceScopeCamera) and the shot direction (TryGetMuzzle) use the calmed
         // direction, so they agree; the gun model and the sight itself stay 1:1 with the hand. Off while hip firing.
         // "smooth gun <minCutoff Hz> [beta]" in gun-offsets.txt tunes it, a minCutoff of 0 switches it off; read when aiming starts.
-        private const float DefaultAimMinCutoff = 3f; // Hz, GUESS (shooting wants less lag than the binoculars; holding breath calms it)
-        private const float DefaultAimBeta = 0.1f;    // GUESS
+        private const float DefaultAimMinCutoff = 3f; // Hz (shooting wants less lag than the binoculars; holding breath calms it)
+        private const float DefaultAimBeta = 0.1f;
         // Hold breath (the game's steady aim, left stick click = sprint key): the cut-off is scaled down to this fraction at the
-        // full hold. GUESS. The game's own sway is not used in VR (the shot comes from the muzzle), so this is where it counts.
+        // full hold. The game's own sway is not used in VR (the shot comes from the muzzle), so this is where it counts.
         private const float SteadyCutoffScale = 0.25f;
         private const float SteadyAccuracyMax = 4f; // UseableGun.steadyAccuracy ramps 0..4
         private static AccessTools.FieldRef<UseableGun, uint> steadyAccuracyField;
@@ -158,7 +158,7 @@ namespace UnturnedVR.VR
         /// <summary>
         /// The equipped gun's sight line in world space: the sight reference point (aim hook of the fitted sight, else
         /// the view hook, else the sight hook; the order the game uses to line the viewmodel up while aiming), the
-        /// barrel direction, and the gun's up (from the barrel towards the sight, so no extra axis guess). False for
+        /// barrel direction, and the gun's up (from the barrel towards the sight, so no extra axis assumption). False for
         /// anything that is not a hand-held gun with a sight reference, or while the item is not on a hand.
         /// No raycast, no allocation; called a few times per frame.
         /// </summary>

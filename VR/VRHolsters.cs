@@ -29,7 +29,7 @@ namespace UnturnedVR.VR
         // The left shoulder is a second primary zone, so either hand can reach either shoulder (cross draw).
         private static readonly int[] zoneSlot = { 0, 1, 2, 3, 0 };
         private const int PrimaryLeftZone = 4;
-        // Offsets in the body frame (x right, y up, z forward, metres, from the neck pivot). GUESSES, tune in headset.
+        // Offsets in the body frame (x right, y up, z forward, metres, from the neck pivot). Tune in headset.
         private static readonly Vector3[] defaultOffsets =
         {
             new Vector3(0.20f, 0.16f, -0.15f),  // primary: over the right shoulder (raised 6 cm)
