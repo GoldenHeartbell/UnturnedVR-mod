@@ -19,12 +19,26 @@ namespace UnturnedVR.VR
 
         private const string BuildingRotateSpeedKey = "UnturnedVR.controls.buildingRotateSpeed";
 
+        private const string HallucinationPitchFlipKey = "UnturnedVR.comfort.hallucinationPitchFlip";
+        private static bool pitchFlipLoaded;
+        private static bool pitchFlipValue;
+
         /// <summary>Slowest and fastest barricade turn speed on the settings page, in percent of the original speed.</summary>
         public const int BuildingRotateSpeedMinPercent = 100;
         public const int BuildingRotateSpeedMaxPercent = 300;
 
         private const string WristStatusKey = "UnturnedVR.hud.wristStatus";
         private const string VehicleDashKey = "UnturnedVR.hud.vehicleDash";
+        private const string WristCompassKey = "UnturnedVR.hud.wristCompass";
+
+        private const string MenuCameraFollowKey = "UnturnedVR.comfort.menuCameraFollow";
+        private static bool menuCameraFollowLoaded;
+        private static bool menuCameraFollowValue = true;
+
+        private const string WaterReflectionsKey = "UnturnedVR.graphics.waterReflections"; // first version: on / off
+        private const string WaterReflectionLevelKey = "UnturnedVR.graphics.waterReflectionLevel";
+        private static bool waterReflectionsLoaded;
+        private static int waterReflectionLevelValue = WaterReflectionLevelMax;
 
         private const string GunDisplayKey = "UnturnedVR.hud.gunDisplay";
 
@@ -36,6 +50,8 @@ namespace UnturnedVR.VR
         private static bool dashValue = true;
         private static bool wristLoaded;
         private static bool wristValue = true;
+        private static bool compassLoaded;
+        private static bool compassValue = true;
         private static bool markersLoaded;
         private static bool markersSaved;
         private static bool markersValue;
@@ -142,6 +158,135 @@ namespace UnturnedVR.VR
             ConvenientSavedata.get().write(BuildingRotateSpeedKey, (long)rotateSpeedPercent);
         }
 
+        /// <summary>
+        /// While a hallucination flips the game's look input, also mirror the VR view's up/down (looking up shows the view
+        /// going down), as the game does for the mouse. Off by default: it is the most nauseating of the effects. The turn
+        /// (left/right) flip is not a setting, it is always applied.
+        /// </summary>
+        public static bool HallucinationPitchFlip
+        {
+            get
+            {
+                if (!pitchFlipLoaded)
+                {
+                    pitchFlipLoaded = true;
+                    ConvenientSavedata.get().read(HallucinationPitchFlipKey, out pitchFlipValue); // missing = false
+                }
+                return pitchFlipValue;
+            }
+        }
+
+        public static void SetHallucinationPitchFlip(bool on)
+        {
+            pitchFlipLoaded = true;
+            pitchFlipValue = on;
+            ConvenientSavedata.get().write(HallucinationPitchFlipKey, on);
+        }
+
+        /// <summary>
+        /// The main menu's scripted camera motion (the fly-in when the menu opens, the pans between pages): true (the
+        /// default) = the headset view rides along with it as the game plays it (position and heading), false = the view
+        /// holds still and only adopts the camera's pose once it rests (the earlier comfort behaviour).
+        /// </summary>
+        public static bool MenuCameraFollow
+        {
+            get
+            {
+                if (!menuCameraFollowLoaded)
+                {
+                    menuCameraFollowLoaded = true;
+                    bool saved;
+                    if (ConvenientSavedata.get().read(MenuCameraFollowKey, out saved)) // missing = follow
+                    {
+                        menuCameraFollowValue = saved;
+                    }
+                }
+                return menuCameraFollowValue;
+            }
+        }
+
+        public static void SetMenuCameraFollow(bool follow)
+        {
+            menuCameraFollowLoaded = true;
+            menuCameraFollowValue = follow;
+            ConvenientSavedata.get().write(MenuCameraFollowKey, follow);
+        }
+
+        private const string WaterSkyReflectionKey = "UnturnedVR.graphics.waterSkyReflection";
+        private static bool waterSkyReflectionLoaded;
+        private static bool waterSkyReflectionValue = true;
+
+        /// <summary>
+        /// The sky (skybox and clouds) in the water reflection: true (the default) = drawn at the Ultra step, false = never
+        /// drawn, the reflection then shows a flat sky colour as the lower steps do. The lower steps never draw it.
+        /// </summary>
+        public static bool WaterSkyReflection
+        {
+            get
+            {
+                if (!waterSkyReflectionLoaded)
+                {
+                    waterSkyReflectionLoaded = true;
+                    bool saved;
+                    if (ConvenientSavedata.get().read(WaterSkyReflectionKey, out saved)) // missing = on
+                    {
+                        waterSkyReflectionValue = saved;
+                    }
+                }
+                return waterSkyReflectionValue;
+            }
+        }
+
+        public static void SetWaterSkyReflection(bool on)
+        {
+            waterSkyReflectionLoaded = true;
+            waterSkyReflectionValue = on;
+            ConvenientSavedata.get().write(WaterSkyReflectionKey, on);
+        }
+
+        /// <summary>Highest water reflection level on the settings page: 0 Off, 1 Low, 2 Medium, 3 High, 4 Ultra.</summary>
+        public const int WaterReflectionLevelMax = 4;
+
+        /// <summary>
+        /// The planar (mirrored) reflection of the world on water, in the game's own quality steps (0 Off, 1 Low,
+        /// 2 Medium, 3 High, 4 Ultra, as EGraphicQuality). 4 (the default) = the game's own reflection exactly as its
+        /// Planar Reflections option sets it, drawn once per eye in VR (StereoReflectionPatches). Lower = at most that
+        /// quality (the game's culling mask for it), 0 = water without reflection and without the extra render. It is a
+        /// cap: the game's own Planar Reflections and Water quality options still apply first and this can only lower
+        /// what they give. A value saved by the first version (an on / off switch) still reads: off = 0.
+        /// </summary>
+        public static int WaterReflectionLevel
+        {
+            get
+            {
+                if (!waterReflectionsLoaded)
+                {
+                    waterReflectionsLoaded = true;
+                    long level;
+                    bool oldOn;
+                    if (ConvenientSavedata.get().read(WaterReflectionLevelKey, out level))
+                    {
+                        waterReflectionLevelValue = level < 0 ? 0 : level > WaterReflectionLevelMax ? WaterReflectionLevelMax : (int)level;
+                    }
+                    else if (ConvenientSavedata.get().read(WaterReflectionsKey, out oldOn) && !oldOn)
+                    {
+                        waterReflectionLevelValue = 0;
+                    }
+                }
+                return waterReflectionLevelValue;
+            }
+        }
+
+        /// <summary>The reflection is drawn at all (level above Off).</summary>
+        public static bool WaterReflections => WaterReflectionLevel > 0;
+
+        public static void SetWaterReflectionLevel(int level)
+        {
+            waterReflectionsLoaded = true;
+            waterReflectionLevelValue = level < 0 ? 0 : level > WaterReflectionLevelMax ? WaterReflectionLevelMax : level;
+            ConvenientSavedata.get().write(WaterReflectionLevelKey, (long)waterReflectionLevelValue);
+        }
+
         private static int ClampPercent(long percent)
         {
             if (percent < BuildingRotateSpeedMinPercent)
@@ -177,6 +322,34 @@ namespace UnturnedVR.VR
             wristLoaded = true;
             wristValue = on;
             ConvenientSavedata.get().write(WristStatusKey, on);
+        }
+
+        /// <summary>
+        /// The compass tape: true (the default) = on the left wrist panel above the status (VRWristStatus), false = it stays
+        /// on the flat HUD panel. Independent of <see cref="WristStatus"/>.
+        /// </summary>
+        public static bool WristCompass
+        {
+            get
+            {
+                if (!compassLoaded)
+                {
+                    compassLoaded = true;
+                    bool saved;
+                    if (ConvenientSavedata.get().read(WristCompassKey, out saved)) // missing = on
+                    {
+                        compassValue = saved;
+                    }
+                }
+                return compassValue;
+            }
+        }
+
+        public static void SetWristCompass(bool on)
+        {
+            compassLoaded = true;
+            compassValue = on;
+            ConvenientSavedata.get().write(WristCompassKey, on);
         }
 
         /// <summary>

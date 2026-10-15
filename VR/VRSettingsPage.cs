@@ -19,8 +19,13 @@ namespace UnturnedVR.VR
         private SleekButtonState attachModeButton;
         private SleekButtonState buildAimButton;
         private SleekButtonState wristStatusButton;
+        private SleekButtonState compassButton;
         private SleekButtonState vehicleDashButton;
         private SleekButtonState gunDisplayButton;
+        private SleekButtonState pitchFlipButton;
+        private SleekButtonState waterReflectionButton;
+        private SleekButtonState menuCameraButton;
+        private ISleekToggle waterSkyToggle;
         private ISleekSlider rotateSpeedSlider;
 
         /// <summary>The page is on screen (the pause menu is hidden behind it).</summary>
@@ -126,6 +131,68 @@ namespace UnturnedVR.VR
             box.AddChild(rotateSpeedSlider);
             verticalOffset += 40;
 
+            ISleekBox effects = Glazier.Get().CreateBox();
+            effects.PositionOffset_Y = verticalOffset;
+            effects.SizeOffset_X = 400;
+            effects.SizeOffset_Y = 30;
+            effects.Text = "Effects";
+            box.AddChild(effects);
+            verticalOffset += 40;
+
+            // Hallucination (some berries) can flip the look input. Turning left/right is always flipped; this adds up/down,
+            // which mirrors the view's pitch and is the most nauseating part, so it is off by default. States: 0 = Off, 1 = On.
+            pitchFlipButton = new SleekButtonState(new GUIContent("Off"), new GUIContent("On"));
+            pitchFlipButton.PositionOffset_Y = verticalOffset;
+            pitchFlipButton.SizeOffset_X = 200;
+            pitchFlipButton.SizeOffset_Y = 30;
+            pitchFlipButton.AddLabel("Hallucination look flip (up/down)", ESleekSide.RIGHT);
+            pitchFlipButton.tooltip = "Some hallucinations reverse your look direction, as the game does with the mouse. Turning left/right is always reversed. On: looking up/down is reversed too (the view moves the opposite way to your head). Can be very nauseating.";
+            pitchFlipButton.state = VRSettings.HallucinationPitchFlip ? 1 : 0;
+            pitchFlipButton.onSwappedState = OnPitchFlipSwapped;
+            box.AddChild(pitchFlipButton);
+            verticalOffset += 40;
+
+            // The main menu's scripted camera (the fly-in and the pans between pages): ride along with it, or hold still.
+            // States: 0 = Follow, 1 = Hold still.
+            menuCameraButton = new SleekButtonState(new GUIContent("Follow"), new GUIContent("Hold still"));
+            menuCameraButton.PositionOffset_Y = verticalOffset;
+            menuCameraButton.SizeOffset_X = 200;
+            menuCameraButton.SizeOffset_Y = 30;
+            menuCameraButton.AddLabel("Menu camera motion", ESleekSide.RIGHT);
+            menuCameraButton.tooltip = "Follow: in the main menu the view rides along with the game's camera fly-in and the pans between pages. Hold still: the view waits until the camera has come to rest (more comfortable if the motion is uncomfortable).";
+            menuCameraButton.state = VRSettings.MenuCameraFollow ? 0 : 1;
+            menuCameraButton.onSwappedState = OnMenuCameraSwapped;
+            box.AddChild(menuCameraButton);
+            verticalOffset += 40;
+
+            // The game's water reflection (a mirrored second render of the world). In VR it is rendered once per eye, which
+            // costs time near water. The steps are the game's own quality steps and cap what its Planar Reflections option
+            // gives. States: 0 = Off, 1 = Low, 2 = Medium, 3 = High, 4 = Ultra (the default, the game's setting as is).
+            waterReflectionButton = new SleekButtonState(new GUIContent("Off"), new GUIContent("Low"), new GUIContent("Medium"), new GUIContent("High"), new GUIContent("Ultra"));
+            waterReflectionButton.PositionOffset_Y = verticalOffset;
+            waterReflectionButton.SizeOffset_X = 200;
+            waterReflectionButton.SizeOffset_Y = 30;
+            waterReflectionButton.AddLabel("Water reflections", ESleekSide.RIGHT);
+            waterReflectionButton.tooltip = "How much of the world is reflected on water, drawn for each eye (costs performance near water). Ultra: as set by the game's Planar Reflections option. Lower steps cap it (fewer things reflected), Off: water without the reflection. The game's own Water quality option must be Ultra for reflections to exist at all.";
+            waterReflectionButton.state = VRSettings.WaterReflectionLevel;
+            waterReflectionButton.onSwappedState = OnWaterReflectionSwapped;
+            box.AddChild(waterReflectionButton);
+            verticalOffset += 40;
+
+            // The sky and clouds in the water reflection: drawn at the Ultra step when this is on; off = a flat sky colour
+            // as on the lower steps (the lower steps never draw it).
+            waterSkyToggle = Glazier.Get().CreateToggle();
+            waterSkyToggle.PositionOffset_X = ToggleLeft;
+            waterSkyToggle.PositionOffset_Y = verticalOffset;
+            waterSkyToggle.SizeOffset_X = 40;
+            waterSkyToggle.SizeOffset_Y = 40;
+            waterSkyToggle.AddLabel("Sky and clouds in water reflections", ESleekSide.RIGHT);
+            waterSkyToggle.TooltipText = "Draw the sky and clouds in the water reflection (only at the Ultra step above). Off: the reflection shows a flat sky colour, which also saves a little performance.";
+            waterSkyToggle.Value = VRSettings.WaterSkyReflection;
+            waterSkyToggle.OnValueChanged += OnWaterSkyToggled;
+            box.AddChild(waterSkyToggle);
+            verticalOffset += 50;
+
             ISleekBox hud = Glazier.Get().CreateBox();
             hud.PositionOffset_Y = verticalOffset;
             hud.SizeOffset_X = 400;
@@ -141,14 +208,27 @@ namespace UnturnedVR.VR
             wristStatusButton.SizeOffset_X = 200;
             wristStatusButton.SizeOffset_Y = 30;
             wristStatusButton.AddLabel("Status display", ESleekSide.RIGHT);
-            wristStatusButton.tooltip = "Wrist: health, food, water and status icons are on your left wrist (look at it with the hand free) and fade in at the edge of the view when something needs attention. HUD panel: they stay on the flat HUD.";
+            wristStatusButton.tooltip = "Wrist: health, food, water and status icons are on your left wrist (look at it with the hand free) and fade in at the edge of the view when something needs attention, together with the voice chat indicator and the gas mask box. HUD panel: they stay on the flat HUD.";
             wristStatusButton.state = VRSettings.WristStatus ? 0 : 1;
             wristStatusButton.onSwappedState = OnWristStatusSwapped;
             box.AddChild(wristStatusButton);
             verticalOffset += 40;
 
+            // The compass tape: on the left wrist panel (look at it, same gesture as the status), or left on the flat HUD
+            // panel. Independent of the status display above. States: 0 = Wrist, 1 = HUD panel.
+            compassButton = new SleekButtonState(new GUIContent("Wrist"), new GUIContent("HUD panel"));
+            compassButton.PositionOffset_Y = verticalOffset;
+            compassButton.SizeOffset_X = 200;
+            compassButton.SizeOffset_Y = 30;
+            compassButton.AddLabel("Compass display", ESleekSide.RIGHT);
+            compassButton.tooltip = "Wrist: the compass is on your left wrist above the status (look down at the arm with the hand free). HUD panel: it stays on the flat HUD. Only shown when the game gives you a compass.";
+            compassButton.state = VRSettings.WristCompass ? 0 : 1;
+            compassButton.onSwappedState = OnCompassSwapped;
+            box.AddChild(compassButton);
+            verticalOffset += 40;
+
             // The vehicle box (fuel, speed, health): a dashboard to the right of the wheel, or left on the flat HUD panel.
-            vehicleDashButton = new SleekButtonState(new GUIContent("Dashboard"), new GUIContent("HUD panel"));
+            vehicleDashButton =new SleekButtonState(new GUIContent("Dashboard"), new GUIContent("HUD panel"));
             vehicleDashButton.PositionOffset_Y = verticalOffset;
             vehicleDashButton.SizeOffset_X = 200;
             vehicleDashButton.SizeOffset_Y = 30;
@@ -199,8 +279,13 @@ namespace UnturnedVR.VR
             attachModeButton.state = AttachModeState(VRSettings.AttachMenuHold);
             buildAimButton.state = VRSettings.BuildingHandBased ? 1 : 0;
             wristStatusButton.state = VRSettings.WristStatus ? 0 : 1;
+            compassButton.state = VRSettings.WristCompass ? 0 : 1;
             vehicleDashButton.state = VRSettings.VehicleDash ? 0 : 1;
             gunDisplayButton.state = VRSettings.GunDisplay ? 0 : 1;
+            pitchFlipButton.state = VRSettings.HallucinationPitchFlip ? 1 : 0;
+            waterReflectionButton.state = VRSettings.WaterReflectionLevel;
+            waterSkyToggle.Value = VRSettings.WaterSkyReflection;
+            menuCameraButton.state = VRSettings.MenuCameraFollow ? 0 : 1;
             rotateSpeedSlider.Value = RotateSpeedToSlider(VRSettings.BuildingRotateSpeedPercent);
             rotateSpeedSlider.UpdateLabel(RotateSpeedLabel(VRSettings.BuildingRotateSpeedPercent));
             pauseContainer.AnimateOutOfView(0, 1);
@@ -238,11 +323,44 @@ namespace UnturnedVR.VR
             VRLog.Info("settings page: building aim " + (hand ? "hand based" : "head based") + ".");
         }
 
+        private void OnPitchFlipSwapped(SleekButtonState button, int index)
+        {
+            bool on = index == 1;
+            VRSettings.SetHallucinationPitchFlip(on);
+            VRLog.Info("settings page: hallucination pitch flip " + (on ? "on" : "off") + ".");
+        }
+
+        private void OnMenuCameraSwapped(SleekButtonState button, int index)
+        {
+            bool follow = index == 0;
+            VRSettings.SetMenuCameraFollow(follow);
+            VRLog.Info("settings page: menu camera motion " + (follow ? "follow" : "hold still") + ".");
+        }
+
+        private void OnWaterSkyToggled(ISleekToggle toggle, bool state)
+        {
+            VRSettings.SetWaterSkyReflection(state);
+            VRLog.Info("settings page: sky in water reflections " + (state ? "on" : "off") + ".");
+        }
+
+        private void OnWaterReflectionSwapped(SleekButtonState button, int index)
+        {
+            VRSettings.SetWaterReflectionLevel(index);
+            VRLog.Info("settings page: water reflections level " + index + " (0 off, 4 ultra).");
+        }
+
         private void OnWristStatusSwapped(SleekButtonState button, int index)
         {
             bool wrist = index == 0;
             VRSettings.SetWristStatus(wrist);
             VRLog.Info("settings page: status display " + (wrist ? "wrist" : "HUD panel") + ".");
+        }
+
+        private void OnCompassSwapped(SleekButtonState button, int index)
+        {
+            bool wrist = index == 0;
+            VRSettings.SetWristCompass(wrist);
+            VRLog.Info("settings page: compass display " + (wrist ? "wrist" : "HUD panel") + ".");
         }
 
         private void OnVehicleDashSwapped(SleekButtonState button, int index)

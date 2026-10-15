@@ -59,6 +59,11 @@
       <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\HighlightingSystem.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Low-health / night-vision grayscale: legacy GrayscaleEffect image effect (shipped with the game; not in the SDK/editor build). -->
+    <Reference Include="ImageEffectsUnity4">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\ImageEffectsUnity4.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <!-- M4: SleekWindow (PlayerUI.window.showCursor = a cursor UI like the inventory is open). -->
     <Reference Include="SDG.Glazier.Runtime">
       <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\SDG.Glazier.Runtime.dll</HintPath>

@@ -409,7 +409,7 @@ namespace UnturnedVR.VR
             // Health, food, status icons: on the wrist / glance reveal instead of the HUD panel (their rects are cut out too).
             if (wristStatus != null)
             {
-                if (inGame && (VRSettings.WristStatus || VRSettings.VehicleDash || VRSettings.GunDisplay) &&PlayerUI.window != null && PlayerUI.window.isEnabled
+                if (inGame && (VRSettings.WristStatus || VRSettings.WristCompass || VRSettings.VehicleDash || VRSettings.GunDisplay) && PlayerUI.window != null && PlayerUI.window.isEnabled
                     && PlayerUI.container != null && PlayerUI.container.IsVisible)
                 {
                     wristStatus.Update(eye, CanvasSize, PanelWidth / PanelDistance, hudHoles);

@@ -13,6 +13,13 @@ namespace UnturnedVR.Patches
     /// MainCamera (and the scope camera under it) and the pitch sent to the server and other players follow the
     /// head. The VR rig is a sibling of MainCamera, so this does not rotate the view a second time.
     /// Harmony exposes the private fields as "____yaw" / "____pitch" (three underscores + field name).
+    /// Hallucination (some berries) makes the game flip the look input (PlayerLook.onVisionUpdated sets
+    /// yawInputMultiplier to -1 with 25% chance when it starts, the same for pitch). The mouse path multiplies by it, the head does not, so
+    /// the same multiplier is applied to the head turn and the stick turn here: the body (and so the view and the aim)
+    /// turns the opposite way to the head. The rig bookkeeping stays as is (view relative to the body is unchanged), only
+    /// the body yaw added is mirrored. The pitch multiplier cannot be applied to a head pitch that is absolute, so it is
+    /// handed to VRRig.SetPitchFlip, which (when the VR setting is on) mirrors the VR camera's pitch (VRPitchFlip); the
+    /// game's pitch then follows that mirrored view like it follows any head pitch.
     /// </summary>
     [HarmonyPatch(typeof(PlayerLook), "Update")]
     internal static class PlayerLookHeadYawPatch
@@ -22,7 +29,7 @@ namespace UnturnedVR.Patches
         private static bool wasSeated;
         private static bool wasBodyFollowsHead;
 
-        private static void Prefix(PlayerLook __instance, ref float ____yaw, ref float ____pitch)
+        private static void Prefix(PlayerLook __instance, ref float ____yaw, ref float ____pitch, float ___yawInputMultiplier, float ___pitchInputMultiplier)
         {
             if (!VR.VRState.IsActive || __instance.channel == null || !__instance.channel.IsLocalPlayer)
             {
@@ -39,7 +46,13 @@ namespace UnturnedVR.Patches
 
             bool seated = stance == EPlayerStance.DRIVING || stance == EPlayerStance.SITTING;
 
-            ____yaw += VR.VRRig.ConsumeHeadYawDelta(bodyFollowsHead);
+            // -1 while a hallucination flips the look input (1 otherwise): head left -> view right.
+            float yawMultiplier = ___yawInputMultiplier < 0f ? -1f : 1f;
+
+            // Same for pitch, but through the camera (VRPitchFlip), and only with the VR setting on.
+            VR.VRRig.SetPitchFlip(___pitchInputMultiplier < 0f, bodyFollowsHead);
+
+            ____yaw += VR.VRRig.ConsumeHeadYawDelta(bodyFollowsHead) * yawMultiplier;
 
             // Seats: the body does not follow the head there, so the view and the body drift apart while you look
             // around. Sitting down puts the view straight ahead in the seat; getting out turns the body to where you
@@ -67,7 +80,7 @@ namespace UnturnedVR.Patches
             if (bodyFollowsHead && !PlayerUI.window.showCursor && !LoadingUI.isBlocked && !__instance.isIgnoringInput)
             {
                 VR.VRControllerInput.Refresh();
-                ____yaw += VR.VRControllerInput.RightStick.x * SmoothTurnSpeed * Time.deltaTime;
+                ____yaw += VR.VRControllerInput.RightStick.x * SmoothTurnSpeed * Time.deltaTime * yawMultiplier;
             }
         }
     }

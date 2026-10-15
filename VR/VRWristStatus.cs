@@ -18,8 +18,9 @@ namespace UnturnedVR.VR
     ///      food / water / virus / oxygen at 0, radiation, full moon, safezone...). Nothing of its own is invented: a vital
     ///      that is merely low has no game icon and shows nothing. Hidden while the wrist panel is up (the wrist shows
     ///      everything).
-    /// The game decides what is shown (icon visibility, vitals visible by level config); this class only reads it.
-    /// All numbers are GUESSES; tune by feel. Cost: a few field reads and vector operations per frame.
+    /// The wrist panel also carries the compass tape (PlayerLifeUI.compassBox) at its top, with its own setting
+    /// (VRSettings.WristCompass), independent of the status setting.
+    /// The game decides what is shown (icon visibility, vitals visible by level config, compass availability); this class only reads it.
     /// </summary>
     internal sealed class VRWristStatus
     {
@@ -30,6 +31,7 @@ namespace UnturnedVR.VR
         private const float WristBack = 0.28f;             // from the controller's grip point towards the elbow
         private const float WristLift = 0.09f;             // towards the eye, so it floats above the (thick) arm
         private const float WristGap = 0.006f;             // between the icon strip and the vitals box
+        private const float CompassWidth = 0.22f;          // the compass tape's width in metres, above the icon strip
         // On the arm (VRArms.TryGetForearm): flat on the inner face of the forearm block (the side that looks at the body),
         // text running along the arm, metres in world size.
         private const float ForearmHalfThickness = 0.1875f * 0.65f; // the arm mesh is 0.375 thick unscaled x ArmScale
@@ -98,6 +100,7 @@ namespace UnturnedVR.VR
         private const float RevealPitch = 16f;             // degrees below the view centre
         private const float RevealScale = 1.3f;            // apparent size relative to the same widget on the HUD panel
         private const float RevealGap = 0.008f;
+        private const float GasmaskScale = 0.6f;           // the gas mask box is 400 units wide: shown smaller than the icons
         private const float RevealFadeIn = 0.2f;
         private const float RevealFadeOut = 0.5f;
 
@@ -120,7 +123,10 @@ namespace UnturnedVR.VR
         private sealed class Alert
         {
             public string Name;
-            public ISleekElement Element;      // the game's icon box in the status icon strip
+            public ISleekElement Element;      // the game's icon box in the status icon strip, or a widget of its own (Own)
+            public bool Own;                   // not in the icon strip: the rect is the element's own, shown even with the wrist panel up
+            public bool SecondRow;             // wide boxes (gas mask) go on a row of their own below the icons
+            public float Scale = 1f;           // size relative to the other reveal pieces
             public bool Active;
             public Rect Rect;                  // canvas rect, valid while shown
         }
@@ -140,6 +146,7 @@ namespace UnturnedVR.VR
         private Transform wristRoot;
         private Piece vitalsPiece;
         private Piece iconsPiece;
+        private Piece compassPiece;
         private bool wristWanted;
         private float wristSince;
         private float wristAlpha;
@@ -246,6 +253,7 @@ namespace UnturnedVR.VR
             wristRoot.SetParent(parent, worldPositionStays: false);
             vitalsPiece = CreatePiece(wristRoot, "UnturnedVR Wrist Vitals");
             iconsPiece = CreatePiece(wristRoot, "UnturnedVR Wrist Icons");
+            compassPiece = CreatePiece(wristRoot, "UnturnedVR Wrist Compass");
             wristRoot.gameObject.SetActive(false);
         }
 
@@ -264,13 +272,18 @@ namespace UnturnedVR.VR
             {
                 wristRoot.gameObject.SetActive(false);
             }
+            HideReveal();
+            wristWanted = false;
+            wristAlpha = 0f;
+        }
+
+        private void HideReveal()
+        {
             EnsureRevealRoot();
             if (revealRoot.gameObject.activeSelf)
             {
                 revealRoot.gameObject.SetActive(false);
             }
-            wristWanted = false;
-            wristAlpha = 0f;
             revealAlpha = 0f;
         }
 
@@ -287,7 +300,11 @@ namespace UnturnedVR.VR
 
             UpdateDash(eye, widthPerMeter);
             UpdateGun(eye);
-            if (!VRSettings.WristStatus)
+            // The wrist panel carries two independent things: the status (vitals box + icon strip, with the glance reveal) and
+            // the compass tape. Each has its own setting; the panel and its look-down gesture are shared.
+            bool statusOn = VRSettings.WristStatus;
+            bool compassOn = VRSettings.WristCompass;
+            if (!statusOn && !compassOn)
             {
                 HideWristAndReveal();
                 return;
@@ -296,9 +313,9 @@ namespace UnturnedVR.VR
             ISleekElement lifeBox = lifeBoxField != null ? lifeBoxField.GetValue(null) as ISleekElement : null;
             ISleekElement icons = iconsField != null ? iconsField.GetValue(null) as ISleekElement : null;
             Player player = Player.LocalPlayer;
-            if (eye == null || lifeBox == null || icons == null || player == null || player.life == null)
+            if (eye == null || player == null || player.life == null || (statusOn && (lifeBox == null || icons == null)))
             {
-                if (!loggedMissing && (lifeBoxField == null || iconsField == null))
+                if (statusOn && !loggedMissing && (lifeBoxField == null || iconsField == null))
                 {
                     loggedMissing = true;
                     VRLog.Warn("wrist status: PlayerLifeUI.lifeBox / statusIconsContainer not found, the status stays on the HUD panel.");
@@ -307,36 +324,69 @@ namespace UnturnedVR.VR
                 return;
             }
 
-            // PlayerLifeUI builds new widgets for every spawn: the cached references are only good for this lifeBox.
-            if (!ReferenceEquals(lifeBox, alertsFor))
+            Rect? vitalsShown = null;
+            Rect? iconsShown = null;
+            if (statusOn)
             {
-                alertsFor = lifeBox;
-                alerts.Clear();
-                BuildAlerts();
+                // PlayerLifeUI builds new widgets for every spawn: the cached references are only good for this lifeBox.
+                if (!ReferenceEquals(lifeBox, alertsFor))
+                {
+                    alertsFor = lifeBox;
+                    alerts.Clear();
+                    BuildAlerts();
+                }
+
+                // The game's own boxes stay on the HUD panel only if they are not visible (nothing to cut then).
+                // The hole is larger than the crop: the boxes' border and drop shadow reach further than the crop's margin
+                // (the top and right edges showed on the HUD panel with the same margin as the crop).
+                if (lifeBox.IsVisible)
+                {
+                    vitalsShown = RectOf(lifeBox);
+                    holes.Add(Inflate(vitalsShown.Value, HoleExtra));
+                }
+                if (icons.IsVisible)
+                {
+                    iconsShown = RectOf(icons);
+                    holes.Add(Inflate(iconsShown.Value, HoleExtra));
+                }
+
+                // Voice chat indicators and the gas mask box, shown in the glance reveal: cut out of the HUD panel the same way.
+                for (int i = 0; i < alerts.Count; i++)
+                {
+                    Alert alert = alerts[i];
+                    if (alert.Own && alert.Element.IsVisible)
+                    {
+                        holes.Add(Inflate(RectOf(alert.Element), HoleExtra));
+                    }
+                }
             }
 
-            // The game's own boxes stay on the HUD panel only if they are not visible (nothing to cut then).
-            Rect vitalsRect = RectOf(lifeBox);
-            Rect iconsRect = RectOf(icons);
-            bool vitalsVisible = lifeBox.IsVisible;
-            bool iconsVisible = icons.IsVisible;
-            // The hole is larger than the crop: the boxes' border and drop shadow reach further than the crop's margin
-            // (the top and right edges showed on the HUD panel with the same margin as the crop).
-            if (vitalsVisible)
+            // The compass tape: shown by the game only with the server's Compass option, in arena, or with a compass item.
+            // The game keeps updating the widget on the canvas; this crops it. Not visible = nothing to cut.
+            Rect? compassShown = null;
+            if (compassOn)
             {
-                holes.Add(Inflate(vitalsRect, HoleExtra));
-            }
-            if (iconsVisible)
-            {
-                holes.Add(Inflate(iconsRect, HoleExtra));
+                ISleekElement compass = PlayerLifeUI.compassBox;
+                if (compass != null && compass.IsVisible)
+                {
+                    compassShown = RectOf(compass);
+                    holes.Add(Inflate(compassShown.Value, HoleExtra));
+                }
             }
 
             lastEye = eye;
             lastUpdateFrame = Time.frameCount;
             // The result from VRArms' pass of this frame's LateUpdate (one frame old); evaluated here only without arms.
             bool wrist = Time.frameCount - gateFrame <= 2 ? gateResult : UpdateWristGate(eye);
-            UpdateWrist(eye, wrist, vitalsVisible ? vitalsRect : (Rect?)null, iconsVisible ? iconsRect : (Rect?)null);
-            UpdateReveal(eye, wrist, iconsVisible ? iconsRect : (Rect?)null, widthPerMeter);
+            UpdateWrist(eye, wrist, vitalsShown, iconsShown, compassShown);
+            if (statusOn)
+            {
+                UpdateReveal(eye, wrist, iconsShown, widthPerMeter);
+            }
+            else
+            {
+                HideReveal();
+            }
         }
 
         /// <summary>Called by VRArms once per frame, right after it posed the arms: evaluates the wrist gate on the final arm pose.</summary>
@@ -434,13 +484,13 @@ namespace UnturnedVR.VR
             return want && Time.unscaledTime - wristSince >= DwellSeconds;
         }
 
-        private void UpdateWrist(Transform eye, bool show, Rect? vitals, Rect? icons)
+        private void UpdateWrist(Transform eye, bool show, Rect? vitals, Rect? icons, Rect? compass)
         {
             float dt = Time.unscaledDeltaTime;
             float target = show ? 1f : 0f;
             wristAlpha = Mathf.MoveTowards(wristAlpha, target, dt / (show ? WristFadeIn : WristFadeOut));
 
-            bool visible = wristAlpha > 0.001f && (vitals.HasValue || icons.HasValue);
+            bool visible = wristAlpha > 0.001f && (vitals.HasValue || icons.HasValue || compass.HasValue);
             if (wristRoot.gameObject.activeSelf != visible)
             {
                 wristRoot.gameObject.SetActive(visible);
@@ -495,11 +545,19 @@ namespace UnturnedVR.VR
                 wristRoot.localScale = InverseScale(anchor.lossyScale);
             }
 
-            // Content: the vitals box in the middle, the icon strip above it, left aligned.
+            // Content, top to bottom: the compass tape (centred, its own scale: it is much wider than the vitals box), the
+            // icon strip (left aligned) and the vitals box.
             float mpu = WristWidth / Mathf.Max(vitals.HasValue ? vitals.Value.width : canvasSize.x * 0.2f, 1f);
             float vitalsHeight = 0f;
             float iconsHeight = 0f;
             float vitalsWidth = 0f;
+            float compassHeight = 0f;
+            float compassMpu = 0f;
+            if (compass.HasValue)
+            {
+                compassMpu = CompassWidth / Mathf.Max(compass.Value.width, 1f);
+                compassHeight = compass.Value.height * compassMpu;
+            }
             if (vitals.HasValue)
             {
                 vitalsWidth = vitals.Value.width * mpu;
@@ -510,9 +568,21 @@ namespace UnturnedVR.VR
                 iconsHeight = icons.Value.height * mpu;
             }
 
-            float total = vitalsHeight + iconsHeight + (vitals.HasValue && icons.HasValue ? WristGap : 0f);
-            float top = total * 0.5f;
+            // The status block is centred on the panel origin on its own, exactly as it was before the compass existed; the
+            // compass hangs above it, so adding it never moves the status. (Compass only: it is centred.)
+            float statusTotal = vitalsHeight + iconsHeight + (vitals.HasValue && icons.HasValue ? WristGap : 0f);
+            float top = statusTotal * 0.5f;
             float left = -vitalsWidth * 0.5f;
+            if (compass.HasValue)
+            {
+                float compassCentre = statusTotal > 0f ? top + WristGap + compassHeight * 0.5f : 0f;
+                ShowPiece(compassPiece, compass.Value, compassMpu, new Vector3(0f, compassCentre, 0f), wristAlpha);
+            }
+            else
+            {
+                HidePiece(compassPiece);
+            }
+
             if (icons.HasValue)
             {
                 float width = icons.Value.width * mpu;
@@ -557,6 +627,12 @@ namespace UnturnedVR.VR
             AddIcon("full moon", "moonBox");
             AddIcon("safezone", "safeBox");
             AddIcon("arrest", "arrestBox");
+
+            // Widgets that are not in the icon strip, with a place of their own on the HUD: the voice chat indicator (you are
+            // talking), the "outbound voice chat is off" hint, and the gas mask's durability box (radiated with a mask on).
+            AddOwn("voice", "voiceBox", 1f, false);
+            AddOwn("voice off", "voiceOutboundOffIcon", 1f, false);
+            AddOwn("gas mask", "gasmaskBox", GasmaskScale, true);
         }
 
         private void AddIcon(string name, string field)
@@ -565,6 +641,15 @@ namespace UnturnedVR.VR
             if (element != null)
             {
                 alerts.Add(new Alert { Name = name, Element = element });
+            }
+        }
+
+        private void AddOwn(string name, string field, float scale, bool secondRow)
+        {
+            ISleekElement element = Field(field);
+            if (element != null)
+            {
+                alerts.Add(new Alert { Name = name, Element = element, Own = true, Scale = scale, SecondRow = secondRow });
             }
         }
 
@@ -597,7 +682,9 @@ namespace UnturnedVR.VR
                 }
                 alert.Active = active;
 
-                if (active && !wristShown && ResolveRect(alert, icons))
+                // The wrist panel carries the status icons, so they are left out of the reveal while it is up; the voice and
+                // gas mask widgets are not on it and stay in the reveal.
+                if (active && (!wristShown || alert.Own) && ResolveRect(alert, icons))
                 {
                     shown.Add(alert);
                 }
@@ -630,16 +717,33 @@ namespace UnturnedVR.VR
             // Size: the same apparent size as on the HUD panel, a bit larger.
             float mpu = RevealDistance * widthPerMeter * RevealScale / Mathf.Max(canvasSize.x, 1f);
 
-            // One row of the game's own icon boxes, left aligned (the block's top left is the root), in the game's order.
-            float x = 0f;
+            // One row of the game's own icon boxes (and the voice indicators), left aligned (the block's top left is the root),
+            // in the game's order; the wide gas mask box gets a second row below it.
             int piece = 0;
-            for (int i = 0; i < shown.Count; i++)
+            float rowTop = 0f;
+            for (int row = 0; row < 2; row++)
             {
-                Alert alert = shown[i];
-                float w = alert.Rect.width * mpu;
-                float h = alert.Rect.height * mpu;
-                ShowPiece(RevealPiece(piece++), alert.Rect, mpu, new Vector3(x + w * 0.5f, -h * 0.5f, 0f), revealAlpha);
-                x += w + RevealGap;
+                float x = 0f;
+                float rowHeight = 0f;
+                for (int i = 0; i < shown.Count; i++)
+                {
+                    Alert alert = shown[i];
+                    if (alert.SecondRow != (row == 1))
+                    {
+                        continue;
+                    }
+
+                    float scaled = mpu * alert.Scale;
+                    float w = alert.Rect.width * scaled;
+                    float h = alert.Rect.height * scaled;
+                    ShowPiece(RevealPiece(piece++), alert.Rect, scaled, new Vector3(x + w * 0.5f, rowTop - h * 0.5f, 0f), revealAlpha);
+                    x += w + RevealGap;
+                    rowHeight = Mathf.Max(rowHeight, h);
+                }
+                if (rowHeight > 0f)
+                {
+                    rowTop -= rowHeight + RevealGap;
+                }
             }
 
             for (int i = piece; i < revealPieces.Count; i++)
@@ -651,6 +755,11 @@ namespace UnturnedVR.VR
         // Canvas rectangle of the alert's icon box inside the game's icon strip (50 x 50 at PositionOffset_X).
         private bool ResolveRect(Alert alert, Rect? icons)
         {
+            if (alert.Own)
+            {
+                alert.Rect = RectOf(alert.Element); // the widget's own box, with the usual margin
+                return true;
+            }
             if (!icons.HasValue)
             {
                 return false;

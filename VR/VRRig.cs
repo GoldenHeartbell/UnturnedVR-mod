@@ -195,7 +195,37 @@ namespace UnturnedVR.VR
 
             float up = Mathf.Clamp(eye.transform.forward.y, -1f, 1f);
             pitch = 90f - Mathf.Asin(up) * Mathf.Rad2Deg;
+
+            // The view pitch is mirrored while the hallucination flip is on, and the game's pitch follows the view. Depending
+            // on when this runs in the frame the camera still holds the raw tracker pose: mirror it here then.
+            if (PitchFlipActive && pitchFlip != null && !pitchFlip.HoldsFlippedPose)
+            {
+                pitch = 180f - pitch;
+            }
             return true;
+        }
+
+        private static VRPitchFlip pitchFlip;
+        private static bool pitchFlipWanted;
+        private static int pitchFlipFrame = -10;
+        private static bool loggedPitchFlip;
+
+        /// <summary>
+        /// The VR camera's pitch is mirrored this frame (hallucination flipped the look input and the setting is on).
+        /// Set every frame by PlayerLookHeadYawPatch; false when it has not been updated for a couple of frames.
+        /// </summary>
+        public static bool PitchFlipActive => pitchFlipWanted && Time.frameCount - pitchFlipFrame <= 2;
+
+        /// <summary>From PlayerLook.Update: whether the game currently flips the look pitch and the player's view follows the head.</summary>
+        public static void SetPitchFlip(bool gameFlipsPitch, bool viewFollowsHead)
+        {
+            pitchFlipWanted = gameFlipsPitch && viewFollowsHead && VRSettings.HallucinationPitchFlip;
+            pitchFlipFrame = Time.frameCount;
+            if (pitchFlipWanted && !loggedPitchFlip)
+            {
+                loggedPitchFlip = true;
+                VRLog.Info("hallucination: look pitch flipped on the VR camera (setting on).");
+            }
         }
 
         private static Camera EnsureRigObject()
@@ -211,6 +241,11 @@ namespace UnturnedVR.VR
             // carries the eye-height offset (VRRigHeight). Same shape as VHVR's SteamVR Player prefab.
             GameObject hmdObject = new GameObject(HmdObjectName);
             hmdObject.transform.SetParent(rigObject.transform, worldPositionStays: false);
+
+            // The game's water (PlanarReflection.WaterTileBeingRendered) only renders its reflection and uses the
+            // reflective shader variant for a camera tagged "MainCamera"; an untagged camera gets the simple variant
+            // with no reflection texture (white rivers). Same tag as the game's own MainCamera.
+            hmdObject.tag = "MainCamera";
 
             Camera vrCamera = hmdObject.AddComponent<Camera>();
             hmdObject.AddComponent<AudioListener>();
@@ -232,6 +267,7 @@ namespace UnturnedVR.VR
                 rigObject.AddComponent<VRSessionMonitor>();
             }
             hmdObject.AddComponent<VROpenVRPoseFallback>();
+            pitchFlip = hmdObject.AddComponent<VRPitchFlip>(); // after the pose sources: it mirrors what they wrote
             VRHands.Create(rigObject.transform);
 #if UNITY_EDITOR
             rigObject.AddComponent<VRDebugKeys>();
@@ -258,10 +294,14 @@ namespace UnturnedVR.VR
                 return;
             }
 
+            // Hit / flashbang tint and the low-health grayscale: they follow the game's values every frame.
+            VRScreenEffects.Update(from, to);
+
             // Same gate MirrorSettings uses for the VR camera (it moves it forward right after this check).
             if (Time.unscaledTime >= nextMirrorCheck)
             {
                 VRHighlighting.Sync(from, to);
+                VRScreenEffects.SyncPostProcessLayer(from, to);
             }
 
             // The menu camera's mask and clear settings change between menu pages / loading.
@@ -416,7 +456,7 @@ namespace UnturnedVR.VR
 
             layer.volumeTrigger = target.transform;
             layer.volumeLayer = source.volumeLayer;
-            layer.antialiasingMode = source.antialiasingMode;
+            layer.antialiasingMode = VRScreenEffects.VRAntialiasing(source.antialiasingMode);
             layer.stopNaNPropagation = source.stopNaNPropagation;
             layer.fog.enabled = source.fog.enabled;
             layer.fog.excludeSkybox = source.fog.excludeSkybox;

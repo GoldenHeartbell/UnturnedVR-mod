@@ -110,7 +110,11 @@ namespace UnturnedVR.VR
             lastCameraYaw = yaw;
 
             menuStillTime = still ? menuStillTime + dt : 0f;
-            if (!menuHasPose || menuStillTime >= MenuStillSeconds)
+
+            // The "Menu camera motion" setting: Follow (default) = the rig rides along with the scripted fly-in and page
+            // pans as the game plays them (position and heading; the camera's own tilt is still dropped), Hold still =
+            // the older comfort behaviour of waiting until the camera rests.
+            if (!menuHasPose || VRSettings.MenuCameraFollow || menuStillTime >= MenuStillSeconds)
             {
                 menuPosition = camera.position;
                 menuYaw = yaw;
