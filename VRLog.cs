@@ -36,7 +36,7 @@ namespace UnturnedVR
 
         private static string Format(string message, string caller)
         {
-            return Tag + Path.GetFileNameWithoutExtension(caller) + ": " + message;
+            return Tag + Net.NetLog.ClassName(caller) + ": " + message;
         }
     }
 }

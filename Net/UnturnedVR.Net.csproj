@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The part of the mod that runs on a dedicated server as well as on the client: the RPC registration, the server-side
+       checks and the role audit. It references no VR or XR assembly, so the game can load it on a server. UnturnedVR.dll
+       (all the VR and client code) is a separate assembly with the module role "Client", which the game never loads there. -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>UnturnedVR.Net</AssemblyName>
+    <RootNamespace>UnturnedVR.Net</RootNamespace>
+    <!-- Keep in step with <Version> in ../UnturnedVR.csproj (scripts/make-dist.ps1 sets and checks both). -->
+    <Version>0.2.3</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <!-- local.props sets UnturnedInstallDir to this machine's game install; gitignored, never committed. -->
+  <Import Project="..\local.props" Condition="Exists('..\local.props')" />
+
+  <ItemGroup>
+    <PackageReference Include="Lib.Harmony" Version="2.3.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="UnturnedVR" />
+  </ItemGroup>
+
+  <!-- Game assemblies are never shipped in this repo; reference them from the local install. -->
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SDG.NetPak.Runtime">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\SDG.NetPak.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SDG.NetTransport">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\SDG.NetTransport.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="com.rlabrecque.steamworks.net">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\com.rlabrecque.steamworks.net.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

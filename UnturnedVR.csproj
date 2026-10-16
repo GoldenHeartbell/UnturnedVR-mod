@@ -18,10 +18,32 @@
     <PackageReference Include="Lib.Harmony" Version="2.3.3" />
   </ItemGroup>
 
+  <!-- Net/ is its own assembly (UnturnedVR.Net.dll): the RPC registration, the server-side checks and the role audit, with no
+       VR reference, so a dedicated server can load it. This assembly (module role "Client") holds all the VR and client code. -->
+  <ItemGroup>
+    <Compile Remove="Net\**" />
+    <None Remove="Net\**" />
+    <ProjectReference Include="Net\UnturnedVR.Net.csproj" />
+  </ItemGroup>
+
   <!-- Game assemblies are never shipped in this repo; reference them from the local install. -->
   <ItemGroup>
     <Reference Include="Assembly-CSharp">
       <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Private-server networking: NetPakReader/Writer (RPC payloads) and ENetReliability. -->
+    <Reference Include="SDG.NetPak.Runtime">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\SDG.NetPak.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- CSteamID (the id of a disconnecting player, for the per-sender bookkeeping in Net/VRNetGuard). -->
+    <Reference Include="com.rlabrecque.steamworks.net">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\com.rlabrecque.steamworks.net.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SDG.NetTransport">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\SDG.NetTransport.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine">
