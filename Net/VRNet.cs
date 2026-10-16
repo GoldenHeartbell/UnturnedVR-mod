@@ -199,6 +199,43 @@ namespace UnturnedVR.Net
             }
         }
 
+        /// <summary>
+        /// Client to server, reliable: the pose at the instant of a launcher shot, with the muzzle the client fired its own rocket from.
+        /// The client sends it from inside UseableGun.fire, before the input packet that carries the shot, so it is on the server when
+        /// the server runs that shot; the server then starts its rocket from this muzzle and not from the newer 20-a-second pose
+        /// (see <see cref="VRNetPoseStore"/>). Its own RPC with its own rate limit: a shared one would drop the shot pose whenever it
+        /// arrived within a few milliseconds of an ordinary pose.
+        /// </summary>
+        [SteamCall(ESteamCallValidation.SERVERSIDE, ratelimitHz = 10)]
+        public static void ReceiveShotPose(in ServerInvocationContext context)
+        {
+            try
+            {
+                if (!VRNetGuard.TryAccept(context, out VRNetGuard.Sender sender))
+                {
+                    return;
+                }
+
+                if (!VRPoseData.TryRead(context.reader, out VRPoseData pose))
+                {
+                    VRNetGuard.Malformed(context, sender, "shot pose");
+                    return;
+                }
+
+                if (!pose.HasMuzzle || !VRNetGuard.TryValidatePose(sender, ref pose))
+                {
+                    VRNetGuard.Implausible(sender, "shot pose");
+                    return;
+                }
+
+                VRNetPoseStore.StoreShot(sender.Id, pose);
+            }
+            catch (Exception e)
+            {
+                NetLog.Warn("net: shot pose handler failed: " + e.Message);
+            }
+        }
+
         /// <summary>Server to client: "this server runs the mod's network protocol, version N". A vanilla client logs one warning and ignores it.</summary>
         [SteamCall(ESteamCallValidation.ONLY_FROM_SERVER)]
         public static void ReceiveHello(in ClientInvocationContext context)

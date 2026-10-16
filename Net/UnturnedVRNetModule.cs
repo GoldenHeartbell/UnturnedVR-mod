@@ -1,3 +1,5 @@
+using System;
+using HarmonyLib;
 using SDG.Framework.Modules;
 
 namespace UnturnedVR.Net
@@ -12,6 +14,11 @@ namespace UnturnedVR.Net
         /// <summary>Id of the client assembly's Harmony instance; the server audit checks that nothing is patched under it.</summary>
         public const string HarmonyId = "digital.unturnedvr.module";
 
+        /// <summary>Id of the Harmony instance for the patches in this assembly (the server-side ones).</summary>
+        public const string NetHarmonyId = "digital.unturnedvr.net";
+
+        private Harmony harmony;
+
         public void initialize()
         {
             NetLog.Info("UnturnedVR.Net " + typeof(UnturnedVRNetModule).Assembly.GetName().Version.ToString(3) + " initializing...");
@@ -20,6 +27,8 @@ namespace UnturnedVR.Net
 
             // Says hello to joining players when this process is a server; does nothing on a plain client.
             VRNetServerTicker.Create();
+
+            ApplyServerPatches();
 
             if (VRRole.IsDedicatedServer)
             {
@@ -30,7 +39,28 @@ namespace UnturnedVR.Net
 
         public void shutdown()
         {
+            harmony?.UnpatchAll(NetHarmonyId);
             VRNet.Shutdown();
+        }
+
+        // The patches in this assembly act only in a process that is the server (each checks it), so they are safe to apply everywhere.
+        private void ApplyServerPatches()
+        {
+            try
+            {
+                harmony = new Harmony(NetHarmonyId);
+                harmony.PatchAll(typeof(UnturnedVRNetModule).Assembly);
+                int patched = 0;
+                foreach (var method in harmony.GetPatchedMethods())
+                {
+                    ++patched;
+                }
+                NetLog.Info("net: server patches applied: " + patched + " method(s) (rocket launcher muzzle).");
+            }
+            catch (Exception e)
+            {
+                NetLog.Warn("net: server patches failed, the game keeps its own behaviour: " + e.Message);
+            }
         }
     }
 }

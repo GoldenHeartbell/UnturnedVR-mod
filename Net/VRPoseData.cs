@@ -9,7 +9,8 @@ namespace UnturnedVR.Net
     /// </summary>
     internal static class VRNetProtocol
     {
-        public const byte Version = 1;
+        // 2: added ReceiveShotPose (the pose at the instant of a launcher shot).
+        public const byte Version = 2;
     }
 
     /// <summary>

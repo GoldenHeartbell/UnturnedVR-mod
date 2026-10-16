@@ -42,6 +42,9 @@ namespace UnturnedVR.Patches
 
             VR.VRShotProbe.Log(__instance, position, rotation); // diagnostic, off unless VRDebugFlags.LogShotOffset
 
+            // On a server that runs the mod, a launcher shot tells the server this exact muzzle pose, so its rocket leaves the same line.
+            VR.VRNetPoseSender.SendLauncherShot(player, position, rotation);
+
             __state.Swapped = true;
             __state.Position = aim.position;
             __state.Rotation = aim.rotation;

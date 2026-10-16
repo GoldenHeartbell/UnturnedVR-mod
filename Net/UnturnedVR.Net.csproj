@@ -38,6 +38,11 @@
       <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Physics.Linecast: the server's wall check between the eye and the reported muzzle. The game uses it on a server too. -->
+    <Reference Include="UnityEngine.PhysicsModule">
+      <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\UnityEngine.PhysicsModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="SDG.NetPak.Runtime">
       <HintPath>$(UnturnedInstallDir)\Unturned_Data\Managed\SDG.NetPak.Runtime.dll</HintPath>
       <Private>false</Private>
