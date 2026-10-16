@@ -1,3 +1,4 @@
+#if !UNITY_EDITOR // PlanarReflection (Standard Assets water) is in the shipped Assembly-CSharp, not in the SDK/editor build
 using System.Reflection;
 using HarmonyLib;
 using SDG.Unturned;
@@ -211,3 +212,4 @@ namespace UnturnedVR.Patches
         }
     }
 }
+#endif

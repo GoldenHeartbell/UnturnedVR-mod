@@ -285,6 +285,7 @@ namespace UnturnedVR.Patches
         }
     }
 
+#if !UNITY_EDITOR // PlanarReflection (Standard Assets water) is in the shipped Assembly-CSharp, not in the SDK/editor build
     /// <summary>
     /// Water reflection. PlanarReflection (the game's Standard Assets water script) renders one mirrored image of the
     /// world per frame from the camera's mono matrices and the water shader samples it with each eye's screen position,
@@ -360,6 +361,7 @@ namespace UnturnedVR.Patches
             return true;
         }
     }
+#endif
 
     /// <summary>
     /// Screen-space reflections (the post-processing package's effect, used for smooth surfaces such as puddles, tanks
