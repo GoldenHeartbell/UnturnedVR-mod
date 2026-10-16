@@ -395,6 +395,7 @@ namespace UnturnedVR.VR
             VRAds.PlaceScopeCamera();
             VRBinoculars.PlaceCamera();
             VRLaser.Update(); // the laser dot follows the muzzle; the game placed it from the head earlier this frame
+            VRFlashlight.Update(); // the beam of a switched-on flashlight starts at the light, not at the eyes
             VRAttachMenu.CachePanelPose(head.position); // the gun is in its final place now
             if (allowCalibrate)
             {

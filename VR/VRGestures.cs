@@ -11,6 +11,8 @@ namespace UnturnedVR.VR
     ///   - Tactical attachment (light, laser, rangefinder, bayonet jab): while a gun that has one mounted is held with two
     ///     hands, the trigger of the hand that is NOT the gun's trigger hand presses ControlsSettings.tactical.
     ///     One-handed, or without a tactical attachment, that trigger keeps its normal job.
+    ///   - Hand-held flashlight (a melee item with a light): the trigger of the hand that does NOT hold it presses the same
+    ///     key, so the light can be switched on and off (that trigger would otherwise be the strong attack).
     /// The key is pressed for one frame and served through VRKeyMap, like the holster and attach keys; the game then
     /// applies its own rules (equip state, safety, network).
     /// Cost: two distance checks per hand per frame.
@@ -48,7 +50,7 @@ namespace UnturnedVR.VR
             bool play = VRState.IsActive && VRHolsters.FrameValid && equipment != null && !uiOpen;
             bool goggles = play && player.clothing != null && player.clothing.glassesAsset != null
                 && player.clothing.glassesAsset.vision != ELightingVision.NONE;
-            bool tacticalReady = play && VRHold.Both && VRArms.ItemHand >= 0 && HasTactical(equipment);
+            bool tacticalReady = play && VRArms.ItemHand >= 0 && ((VRHold.Both && HasTactical(equipment)) || IsHandLight(equipment));
 
             for (int hand = 0; hand < 2; hand++)
             {
@@ -111,6 +113,12 @@ namespace UnturnedVR.VR
                     VRLog.Info("gestures: tactical attachment toggled with the second hand's trigger.");
                 }
             }
+        }
+
+        // The equipped item is a hand-held flashlight (a melee item with a light): the game switches it with the tactical key.
+        private static bool IsHandLight(PlayerEquipment equipment)
+        {
+            return equipment.useable is UseableMelee && equipment.asset is ItemMeleeAsset melee && melee.isLight;
         }
 
         // The equipped gun has a tactical attachment mounted (light, laser, rangefinder, bayonet).
