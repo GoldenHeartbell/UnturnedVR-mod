@@ -23,6 +23,9 @@ namespace UnturnedVR.VR
         private static Attachments cachedAttachments;
         private static Vector3 localDirection = Vector3.up;
 
+        /// <summary>Why the last <see cref="TryGetMuzzle"/> returned false (for the shot log in UseableGunMuzzlePatch).</summary>
+        public static string MuzzleFailure { get; private set; }
+
         /// <summary>Muzzle pose of the equipped gun in world space, false if the vanilla head aim must be used.</summary>
         public static bool TryGetMuzzle(Player player, out Vector3 position, out Quaternion rotation)
         {
@@ -31,12 +34,14 @@ namespace UnturnedVR.VR
             Camera eye = VRRig.ActiveCamera;
             if (!VRState.IsActive || !VRArms.Active || VRArms.ItemHand < 0 || eye == null)
             {
+                MuzzleFailure = "arms not driving the item (VRArms.Active=" + VRArms.Active + ", ItemHand=" + VRArms.ItemHand + ", eye camera " + (eye != null ? "ok" : "null") + ")";
                 return false;
             }
 
             Transform model = player.equipment != null ? player.equipment.firstModel : null;
             if (model == null)
             {
+                MuzzleFailure = "no first-person model";
                 return false;
             }
             if (model != cachedModel)
@@ -45,12 +50,15 @@ namespace UnturnedVR.VR
             }
             if (barrel == null)
             {
+                MuzzleFailure = "no Barrel hook on \"" + model.name + "\"";
                 return false;
             }
 
             position = barrel.position;
-            if (Physics.Linecast(eye.transform.position, position, RayMasks.DAMAGE_SERVER))
+            if (Physics.Linecast(eye.transform.position, position, out RaycastHit blocker, RayMasks.DAMAGE_SERVER))
             {
+                MuzzleFailure = "eye-to-muzzle linecast hit \"" + blocker.collider.name + "\" (layer " + LayerMask.LayerToName(blocker.collider.gameObject.layer)
+                    + ") " + blocker.distance.ToString("0.00") + " m from the eye, muzzle is " + Vector3.Distance(eye.transform.position, position).ToString("0.00") + " m away";
                 return false;
             }
             rotation = Quaternion.LookRotation(SmoothDirection(barrel.TransformDirection(localDirection)));

@@ -30,8 +30,13 @@ namespace UnturnedVR.Patches
 
             Player player = __instance.player;
             Transform aim = player != null && player.look != null ? player.look.aim : null;
-            if (aim == null || !VR.VRGun.TryGetMuzzle(player, out Vector3 position, out Quaternion rotation))
+            if (aim == null)
             {
+                return;
+            }
+            if (!VR.VRGun.TryGetMuzzle(player, out Vector3 position, out Quaternion rotation))
+            {
+                VRLog.Warn("shot from the head: " + VR.VRGun.MuzzleFailure + ".");
                 return;
             }
 
