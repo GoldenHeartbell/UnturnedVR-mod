@@ -403,7 +403,8 @@ namespace UnturnedVR.VR
                 }
                 else
                 {
-                    worldLabels.Hide();
+                    // Cursor UI open (inventory, pause): no world quads, but the game's flat names stay off the big panel.
+                    worldLabels.CutOut(CanvasSize, hudHoles);
                 }
             }
             // Health, food, status icons: on the wrist / glance reveal instead of the HUD panel (their rects are cut out too).

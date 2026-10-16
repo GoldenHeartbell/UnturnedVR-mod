@@ -20,8 +20,9 @@ namespace UnturnedVR.VR
     /// </summary>
     internal sealed class VRWorldLabels
     {
-        // The game anchors the label 3 m above the player model's position (PlayerUI.updateGroupLabels).
-        private const float GroupLabelHeight = 3f;
+        // The game anchors the label 3 m above the player model's position (PlayerUI.updateGroupLabels); 3 m put it about
+        // 1 m above a standing player's head, so the VR label hangs a bit lower.
+        private const float GroupLabelHeight = 2.5f;
         // Apparent size relative to the same widget on the HUD panel (which is small at 2 m).
         private const float SizeScale = 2f;
         private const float LabelMinDistance = 1.5f;     // closer than this the label stops shrinking
@@ -60,6 +61,7 @@ namespace UnturnedVR.VR
         private float textureAspect;
         private float widthPerMeter;
         private List<Rect> holes;
+        private bool cutOnly;   // CutOut: add the holes, place no quads
 
         public VRWorldLabels(Transform parent, Material material, int layer)
         {
@@ -82,6 +84,25 @@ namespace UnturnedVR.VR
                 }
             }
             used = 0;
+        }
+
+        /// <summary>
+        /// Same as <see cref="Update"/> but draws nothing: only adds the rectangles of the game's own teammate names and hit
+        /// markers to <paramref name="holeRects"/>, so they are not drawn flat on the panel while a cursor UI (inventory,
+        /// pause menu) is open and the world quads are hidden.
+        /// </summary>
+        public void CutOut(Vector2 canvas, List<Rect> holeRects)
+        {
+            Hide();
+            canvasSize = canvas;
+            holes = holeRects;
+            if (HudShown())
+            {
+                cutOnly = true;
+                AddGroupLabels();
+                AddHitmarkers();
+                cutOnly = false;
+            }
         }
 
         /// <summary>
@@ -217,6 +238,12 @@ namespace UnturnedVR.VR
             if (u1 <= u0 || v1 <= v0)
             {
                 return false; // entirely off the canvas
+            }
+
+            if (cutOnly)
+            {
+                holes.Add(canvasRect);
+                return false;
             }
 
             Piece piece = GetPiece(used++);
