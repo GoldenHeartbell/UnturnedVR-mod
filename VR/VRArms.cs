@@ -712,7 +712,17 @@ namespace UnturnedVR.VR
                 position += rotation * opticPose.Offset; // off the hand, so the hand holds them from below
                 rotation *= opticPose.Rotation;
             }
-            rotation *= itemToRoot;
+            // The animation's hold, except for a bow: the vanilla bow is slanted in the view, so it is stood up from its own axes (VRGun.TryGetBowHold).
+            Quaternion hold = itemToRoot;
+            if (itemIsGun && VRGun.TryGetBowHold(lastModel, out Quaternion bowHold))
+            {
+                hold = bowHold;
+            }
+            else if (itemIsGun && VRGun.TryStraightenHold(lastModel, itemToRoot, itemCalibrated, out Quaternion straightHold))
+            {
+                hold = straightHold; // barrel pointing well off the controller forward in the animation (shotguns): swung straight
+            }
+            rotation *= hold;
 
             if (itemIsGun)
             {
@@ -784,7 +794,7 @@ namespace UnturnedVR.VR
             if (itemIsGun)
             {
                 // The gun's ammo / fire mode panel hangs on the model's origin in the barrel frame (blend included).
-                VRWristStatus.GunPosed(position, rotation * Quaternion.Inverse(itemToRoot));
+                VRWristStatus.GunPosed(position, rotation * Quaternion.Inverse(hold));
             }
         }
 

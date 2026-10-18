@@ -38,7 +38,7 @@ namespace UnturnedVR.VR
         private const string DefaultContent =
             "# Your own gun position overrides. Empty = the mod's built-in values. Edit while playing, then re-equip the gun.\n" +
             "# name x y z [pitch]   x = right, y = up, z = forward (metres), pitch in degrees (positive = muzzle down)\n" +
-            "# Classes by inventory width: pistol (1-2), compact (3), rifle (4+). \"item <id or guid>\" overrides one gun (the log prints both).\n" +
+            "# Classes by inventory width: pistol (1-2), compact (3), rifle (4+); bows have their own class: bow. \"item <id or guid>\" overrides one gun (the log prints both).\n" +
             "# The log prints each equipped gun with its id and class. Examples (remove the # to use):\n" +
             "# rifle 0 0.09 0 25\n" +
             "# item 363 0 0.1 0.02 20\n" +
@@ -54,7 +54,15 @@ namespace UnturnedVR.VR
             return className == "rifle" ? Make(new Vector3(0f, 0.09f, 0.07f), 25f) : Make(new Vector3(0f, 0.09f, 0f), 0f);
         }
 
-        private static readonly Dictionary<string, Pose> classes = new Dictionary<string, Pose>();
+        // Bows (EAction.String), class "bow": the rifle's offset and 25 deg tilt, no roll. The bow is not turned by the animation's hold rotation here
+        // (the vanilla bow is slanted in the view): VRGun.TryGetBowHold stands it up from its own axes, arrow along the aim frame forward, +y up.
+        // A roll in a "bow" or "item" line turns it about the arrow axis: "bow 0 0.09 0.07 25 0 180" flips it upside down.
+        private static Pose BowBuiltIn()
+        {
+            return Make(new Vector3(0f, 0.09f, 0.07f), 25f);
+        }
+
+        private static readonly Dictionary<string, Pose> classes =new Dictionary<string, Pose>();
         private static readonly Dictionary<string, Pose> items = new Dictionary<string, Pose>();
         private static readonly Dictionary<string, Vector3> classSupports = new Dictionary<string, Vector3>();
         private static readonly Dictionary<string, Vector3> itemSupports = new Dictionary<string, Vector3>();
@@ -65,23 +73,26 @@ namespace UnturnedVR.VR
         public static Pose Get(ItemGunAsset gun, out string className)
         {
             Reload();
-            className = gun.size_x <= 2 ? "pistol" : gun.size_x == 3 ? "compact" : "rifle";
+            string sizeClass = gun.size_x <= 2 ? "pistol" : gun.size_x == 3 ? "compact" : "rifle";
+            bool bow = gun.action == EAction.String;
+            className = bow ? "bow" : sizeClass;
             string guid = gun.GUID.ToString("N");
             string id = gun.id != 0 ? gun.id.ToString() : null;
             if (!(items.TryGetValue(guid, out Pose pose)
                 || (id != null && items.TryGetValue(id, out pose))
                 || classes.TryGetValue(className, out pose)))
             {
-                pose = BuiltIn(className);
+                pose = bow ? BowBuiltIn() : BuiltIn(className);
             }
 
             // Where the second hand holds the gun: the Grip hook, else this fraction of the way to the muzzle,
             // moved by the support offset of the file.
-            pose.SupportFraction = className == "pistol" ? 0.4f : className == "compact" ? 0.5f : 0.55f;
+            pose.SupportFraction = sizeClass == "pistol" ? 0.4f : sizeClass == "compact" ? 0.5f : 0.55f;
             pose.Support = Vector3.zero;
             if (!(itemSupports.TryGetValue(guid, out Vector3 support)
                 || (id != null && itemSupports.TryGetValue(id, out support))
-                || classSupports.TryGetValue(className, out support)))
+                || (bow && classSupports.TryGetValue(className, out support))
+                || classSupports.TryGetValue(sizeClass, out support)))
             {
                 support = Vector3.zero;
             }
