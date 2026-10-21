@@ -7,12 +7,12 @@ using UnityEngine.SpatialTracking;
 namespace UnturnedVR.VR
 {
     /// <summary>
-    /// M3: head-tracked VR camera. Confirmed in docs/unturned-internals.md that
+    /// M3: head-tracked VR camera.
     /// SDG.Unturned.MainCamera.instance sits under the local player's "First" anchor
     /// (Player.first, i.e. transform.Find("First")) in first-person, with PlayerLook writing
     /// pitch/position directly onto MainCamera's transform every frame and yaw onto the player
     /// root transform. Rather than fight those writes (VHVR's exact problem on Valheim's
-    /// GameCamera, and the UUVR test's head-tracking failure - see HANDOFF.md §2/§3), we build a
+    /// GameCamera, and the UUVR test's head-tracking failure), we build a
     /// separate camera rig parented to the same "First" anchor. It is a sibling of MainCamera,
     /// never touched by PlayerLook, so it only inherits body yaw from the parent hierarchy; head
     /// pitch/roll/position come from a TrackedPoseDriver on the HMD camera child. MainCamera itself is just disabled (not
@@ -405,8 +405,7 @@ namespace UnturnedVR.VR
         }
 
         // FOV is deliberately not copied: once this camera is the one XR renders in stereo, the
-        // XR loader overrides its projection per eye from the headset, making Camera.fieldOfView
-        // irrelevant - see the FOV open design question in docs/unturned-internals.md, resolved
+        // XR loader overrides its projection per eye from the headset, making Camera.fieldOfView irrelevant. 
         // by not reusing MainCamera's Camera object at all.
         private static void CopyCameraSettings(Camera from, Camera to)
         {

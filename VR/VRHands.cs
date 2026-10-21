@@ -25,7 +25,6 @@ namespace UnturnedVR.VR
 
         private static VRHands instance;
         private readonly Transform[] anchors = new Transform[2];
-        private readonly LineRenderer[] markers = new LineRenderer[2];
         private Quaternion gripOffsetRotation = Quaternion.identity;
 
         /// <summary>Anchor of a hand (<see cref="Left"/> / <see cref="Right"/>), or null before the rig exists.</summary>
@@ -74,10 +73,6 @@ namespace UnturnedVR.VR
                 GameObject go = new GameObject(i == Left ? "UnturnedVR Left Hand" : "UnturnedVR Right Hand");
                 go.transform.SetParent(transform, worldPositionStays: false);
                 anchors[i] = go.transform;
-                if (VRDebugFlags.HandMarkers)
-                {
-                    markers[i] = CreateMarker(go, i == Left ? new Color(0.2f, 0.9f, 1f) : new Color(1f, 0.6f, 0.1f));
-                }
             }
             gripOffsetRotation = Quaternion.Euler(GripOffsetEuler);
         }
@@ -133,37 +128,12 @@ namespace UnturnedVR.VR
         private void Place(int hand, bool valid, Vector3 position, Quaternion rotation)
         {
             Transform anchor = anchors[hand];
-            if (markers[hand] != null && markers[hand].enabled != valid)
-            {
-                markers[hand].enabled = valid;
-            }
             if (!valid)
             {
                 return;
             }
             anchor.localRotation = rotation * gripOffsetRotation;
             anchor.localPosition = position + rotation * GripOffsetPosition;
-        }
-
-        // Debug cross: long line forward, short ticks right and up. Local space, so it rides the anchor.
-        private static LineRenderer CreateMarker(GameObject parent, Color color)
-        {
-            LineRenderer line = parent.AddComponent<LineRenderer>();
-            line.useWorldSpace = false;
-            line.material = new Material(Canvas.GetDefaultCanvasMaterial());
-            line.startColor = color;
-            line.endColor = color;
-            line.startWidth = 0.006f;
-            line.endWidth = 0.006f;
-            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            line.receiveShadows = false;
-            line.positionCount = 6;
-            line.SetPositions(new[]
-            {
-                new Vector3(0f, 0f, 0.15f), Vector3.zero, new Vector3(0.04f, 0f, 0f),
-                new Vector3(-0.04f, 0f, 0f), Vector3.zero, new Vector3(0f, 0.04f, 0f),
-            });
-            return line;
         }
     }
 }

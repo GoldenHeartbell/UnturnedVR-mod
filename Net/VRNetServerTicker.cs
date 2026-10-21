@@ -98,7 +98,7 @@ namespace UnturnedVR.Net
                 sendHello = ClientStaticMethod.Get(typeof(VRNetRpc), nameof(VRNetRpc.ReceiveHello));
                 if (sendHello == null)
                 {
-                    NetLog.Warn("net: the game has no handle for the hello RPC, hellos are off.");
+                    VRLog.Warn("net: the game has no handle for the hello RPC, hellos are off.");
                     giveUp = true;
                     return;
                 }

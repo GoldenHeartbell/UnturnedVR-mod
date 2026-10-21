@@ -55,7 +55,7 @@ namespace UnturnedVR.Net
                 FieldInfo clientLength = AccessTools.Field(typeof(NetReflection), "clientMethodsLength");
                 if (serverLength == null || clientLength == null)
                 {
-                    NetLog.Warn("net: NetReflection has no method counts in this game version, mod RPCs are off.");
+                    VRLog.Warn("net: NetReflection has no method counts in this game version, mod RPCs are off.");
                     return false;
                 }
 
@@ -65,7 +65,7 @@ namespace UnturnedVR.Net
                 if (NetPakConst.CountBits(serverBefore + serverAdded) != NetPakConst.CountBits(serverBefore)
                     || NetPakConst.CountBits(clientBefore + clientAdded) != NetPakConst.CountBits(clientBefore))
                 {
-                    NetLog.Warn("net: adding " + serverAdded + " server and " + clientAdded + " client RPC(s) to the game's " + serverBefore + " and "
+                    VRLog.Warn("net: adding " + serverAdded + " server and " + clientAdded + " client RPC(s) to the game's " + serverBefore + " and "
                         + clientBefore + " would widen an RPC id field, which breaks players without the mod. Mod RPCs are off.");
                     return false;
                 }
@@ -76,7 +76,7 @@ namespace UnturnedVR.Net
                 uint clientAfter = (uint) clientLength.GetValue(null);
                 if (serverAfter != serverBefore + serverAdded || clientAfter != clientBefore + clientAdded)
                 {
-                    NetLog.Warn("net: registering changed the RPC counts unexpectedly (server " + serverBefore + " -> " + serverAfter
+                    VRLog.Warn("net: registering changed the RPC counts unexpectedly (server " + serverBefore + " -> " + serverAfter
                         + ", client " + clientBefore + " -> " + clientAfter + "), mod RPCs are off.");
                     return false;
                 }
@@ -84,13 +84,13 @@ namespace UnturnedVR.Net
                 Registered = true;
                 VRNetGuard.Initialize();
                 Provider.onClientDisconnected += OnClientDisconnected;
-                NetLog.Info("net: registered " + serverAdded + " server and " + clientAdded + " client RPC(s); the game now has " + serverAfter
+                VRLog.Info("net: registered " + serverAdded + " server and " + clientAdded + " client RPC(s); the game now has " + serverAfter
                     + " server RPCs (" + NetPakConst.CountBits(serverAfter) + " bits), " + clientAfter + " client RPCs ("
                     + NetPakConst.CountBits(clientAfter) + " bits). Protocol " + VRNetProtocol.Version + ".");
             }
             catch (Exception e)
             {
-                NetLog.Warn("net: registering the mod RPCs failed, they are off: " + e.Message);
+                VRLog.Warn("net: registering the mod RPCs failed, they are off: " + e.Message);
             }
 
             return Registered;
@@ -103,6 +103,7 @@ namespace UnturnedVR.Net
                 Provider.onClientDisconnected -= OnClientDisconnected;
             }
             ServerProtocol = 0;
+            VRNetRemotePoses.Clear();
             VRNetGuard.Shutdown();
         }
 
@@ -115,7 +116,7 @@ namespace UnturnedVR.Net
 
             if (changed)
             {
-                NetLog.Info("net: the server runs UnturnedVR network protocol " + version
+                VRLog.Info("net: the server runs UnturnedVR network protocol " + version
                     + (version == VRNetProtocol.Version ? "." : "; this client speaks " + VRNetProtocol.Version + ", so it sends nothing to it."));
             }
         }
@@ -123,6 +124,7 @@ namespace UnturnedVR.Net
         private static void OnClientDisconnected()
         {
             ServerProtocol = 0;
+            VRNetRemotePoses.Clear();
         }
 
         private static void CountRpcs(out uint server, out uint client)
@@ -195,7 +197,7 @@ namespace UnturnedVR.Net
             }
             catch (Exception e)
             {
-                NetLog.Warn("net: pose handler failed: " + e.Message);
+                VRLog.Warn("net: pose handler failed: " + e.Message);
             }
         }
 
@@ -232,7 +234,7 @@ namespace UnturnedVR.Net
             }
             catch (Exception e)
             {
-                NetLog.Warn("net: shot pose handler failed: " + e.Message);
+                VRLog.Warn("net: shot pose handler failed: " + e.Message);
             }
         }
 
@@ -249,7 +251,74 @@ namespace UnturnedVR.Net
             }
             catch (Exception e)
             {
-                NetLog.Warn("net: hello handler failed: " + e.Message);
+                VRLog.Warn("net: hello handler failed: " + e.Message);
+            }
+        }
+
+        /// <summary>
+        /// Client to server, reliable: "my game can show other players' VR poses" (protocol version as one byte). The server then
+        /// relays the VR players around this player to it (<see cref="VRNetRelay"/>). Sent again every few seconds, because the
+        /// first one can be lost while the player is still loading in; the server ignores a repeat.
+        /// </summary>
+        [SteamCall(ESteamCallValidation.SERVERSIDE, ratelimitHz = 2)]
+        public static void ReceiveRelayOptIn(in ServerInvocationContext context)
+        {
+            try
+            {
+                if (!VRNetGuard.TryAccept(context, out VRNetGuard.Sender sender))
+                {
+                    return;
+                }
+
+                if (!context.reader.ReadUInt8(out byte version))
+                {
+                    VRNetGuard.Malformed(context, sender, "relay opt-in");
+                    return;
+                }
+
+                // A client of another protocol version would read the relay wrongly: it gets none.
+                if (version != VRNetProtocol.Version || !VRNetRelay.OptIn(sender.Id))
+                {
+                    VRNetGuard.Implausible(sender, "relay opt-in");
+                }
+            }
+            catch (Exception e)
+            {
+                VRLog.Warn("net: relay opt-in handler failed: " + e.Message);
+            }
+        }
+
+        /// <summary>
+        /// Server to client, unreliable: the VR players around this player, in their own frames (<see cref="VRRelayPose"/>). Only read
+        /// from the server this client heard the hello of; a count or field out of range drops the rest of the message.
+        /// </summary>
+        [SteamCall(ESteamCallValidation.ONLY_FROM_SERVER)]
+        public static void ReceiveRelayPoses(in ClientInvocationContext context)
+        {
+            try
+            {
+                if (context.origin != ClientInvocationContext.EOrigin.Remote || !VRNet.ServerAcceptsPoses)
+                {
+                    return;
+                }
+
+                if (!context.reader.ReadBits(5, out uint count) || count > VRRelayPose.MaxPerMessage)
+                {
+                    return;
+                }
+
+                for (uint index = 0; index < count; ++index)
+                {
+                    if (!VRRelayPose.TryRead(context.reader, out VRRelayPose pose))
+                    {
+                        return;
+                    }
+                    VRNetRemotePoses.Store(pose);
+                }
+            }
+            catch (Exception e)
+            {
+                VRLog.Warn("net: relay handler failed: " + e.Message);
             }
         }
     }

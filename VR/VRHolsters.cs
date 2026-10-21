@@ -216,7 +216,6 @@ namespace UnturnedVR.VR
                     downKey = ControlsSettings.dequip;
                     consumed[hand] = true;
                     VRHaptics.Pulse(hand, ActionAmplitude, 0.15f, 120f);
-                    VRLog.Info("holsters: " + names[zone] + " zone, holstered.");
                     continue;
                 }
 
@@ -226,14 +225,12 @@ namespace UnturnedVR.VR
                     consumed[hand] = true;
                     VRHold.RequestHand(hand); // the drawing hand ends up holding it
                     VRHaptics.Pulse(hand, ActionAmplitude, 0.15f, 120f);
-                    VRLog.Info("holsters: " + names[zone] + " zone, drawn with the " + (hand == VRHands.Left ? "left" : "right") + " hand.");
                     continue;
                 }
 
                 // An empty slot (nothing bound to this hotbar key): consume the press so it does not do something else.
                 consumed[hand] = true;
                 VRHaptics.Pulse(hand, EmptyAmplitude, 0.1f, 90f);
-                VRLog.Info("holsters: " + names[zone] + " zone is empty" + (slot >= 2 ? " (bind an item to hotbar key " + (slot + 1) + " in the inventory)." : "."));
             }
         }
 

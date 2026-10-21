@@ -15,12 +15,6 @@ namespace UnturnedVR.VR
         /// </summary>
         public static bool LogButtons = false;
 
-        /// <summary>
-        /// Draws a small axis cross on each controller (VRHands): cyan = left, orange = right. Flip to true to
-        /// check controller tracking; off until real hands exist (phase 2).
-        /// </summary>
-        public static bool HandMarkers = false;
-
         /// <summary>Logs the pointer state (hit, pixel, trigger) about once a second while it is active.</summary>
         public static bool LogPointer = false;
 
@@ -35,7 +29,7 @@ namespace UnturnedVR.VR
 
         /// <summary>
         /// One line per shot: sight height over the bore, distance of the reticle point, bullet drop there, and how far
-        /// below the reticle the bullet ends up (VRShotProbe). Measured once; the result is in docs/progress.md.
+        /// below the reticle the bullet ends up (VRShotProbe). Measured once.
         /// </summary>
         public static bool LogShotOffset = false;
 

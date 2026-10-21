@@ -26,7 +26,7 @@ namespace UnturnedVR.Net
             }
 
             string item = pose.ItemHand == VRPoseData.ItemHandLeft ? "left" : pose.ItemHand == VRPoseData.ItemHandRight ? "right" : "none";
-            NetLog.Info("net: pose #" + pose.Sequence + " from " + sender.Id + ": head " + pose.HeadPosition.ToString("0.00")
+            VRLog.Info("net: pose #" + pose.Sequence + " from " + sender.Id + ": head " + pose.HeadPosition.ToString("0.00")
                 + ", item hand " + item
                 + ", left hand " + (pose.LeftTracked ? Distance(pose.LeftPosition, pose.HeadPosition) : "untracked")
                 + ", right hand " + (pose.RightTracked ? Distance(pose.RightPosition, pose.HeadPosition) : "untracked")

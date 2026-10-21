@@ -9,7 +9,7 @@ namespace UnturnedVR.VR
     /// The game lights the world with one spot light on the player (Player.firstSpot, a child of the game camera, so in VR
     /// at the head); the item only shows a small viewmodel light. While a flashlight (a melee item with a light) is held and
     /// switched on, that spot light is moved to the item's light (the "Light" child of the light hook the game switches on and
-    /// off) and turned the way it points. The game keeps deciding everything else: when the light is on (its hook is active),
+    /// off) and turned the way the hand frame points (VRArms passes it; the light object's own forward is not the front). The game keeps deciding everything else: when the light is on (its hook is active),
     /// range, angle, colour, the perspective. When the light goes off, the item is put away or the view is not first person,
     /// the spot light gets its own pose back.
     /// The head-mounted light (glasses with a lamp) shares that one spot light and belongs on the head: while it is on, the
@@ -32,7 +32,7 @@ namespace UnturnedVR.VR
         private static bool loggedMissing;
         private static bool loggedTakeover;
 
-        public static void Update()
+        public static void Update(Quaternion? aimFrame)
         {
             Player player = Player.LocalPlayer;
             Transform beam = VRState.IsActive && player != null ? FindBeam(player) : null;
@@ -55,7 +55,9 @@ namespace UnturnedVR.VR
                 moved = true;
             }
 
-            spot.SetPositionAndRotation(beam.position, beam.rotation);
+            // The light object's own axes are the model's (its forward came out of the flashlight's side), so the beam goes
+            // along the hand frame's forward, the direction the game itself aims; the model's light only gives the position.
+            spot.SetPositionAndRotation(beam.position, aimFrame ?? beam.rotation);
 
             if (!loggedTakeover)
             {

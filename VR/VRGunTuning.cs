@@ -29,7 +29,12 @@ namespace UnturnedVR.VR
             public Quaternion Rotation;
             public Vector3 Support;       // second-hand grip point moved by this (gun frame: x right, y up, z forward, metres)
             public float SupportFraction; // without a Grip hook: this fraction of the way from the hand to the muzzle
+            public float SupportInward;   // the drawn second hand sits this far from its own side towards the gun (metres, mirrored per hand)
         }
+
+        // Rifles: the second hand was drawn beside the gun with a gap, so it is moved this far in towards the gun
+        // (20 cm was too far, tuned down to 3 cm).
+        private const float RifleSupportInward = 0.03f;
 
         private const string FileName = "gun-offsets.txt";
 
@@ -45,13 +50,26 @@ namespace UnturnedVR.VR
             "# Where the second hand holds the gun (two-handed): \"support <class>|item <id|guid> x y z\" moves it from the\n" +
             "# Grip hook / default point (x right, y up, z forward along the barrel, metres). Examples:\n" +
             "# support rifle 0 -0.02 0.03\n" +
-            "# support item 363 0 0 -0.05\n";
+            "# support item 363 0 0 -0.05\n" +
+            "# How far the drawn second hand sits in towards the gun from its own side (metres, mirrored per hand: the same\n" +
+            "# with the gun in either hand; negative = further out). Built in: rifle 0.03, others 0. \"inward <class>|item <id|guid> metres\":\n" +
+            "# inward rifle 0.05\n" +
+            "# inward item 363 0.1\n" +
+            "# Fishing rod: how far up the rod (towards the tip, metres) the hand holds it; negative = lower, towards the butt. Default -0.45:\n" +
+            "# rodgrip -0.45\n" +
+            "# Axes (melee items with \"axe\" in their name, pickaxes included): same, along the handle (towards the head); negative = lower. Default -0.22:\n" +
+            "# axegrip -0.22\n";
 
         // Built-in per-class defaults, used when the file has no line for the class.
         private static Pose BuiltIn(string className)
         {
             // Rifles: the model origin sits near the trigger guard, so push the gun forward (z) to put the hand on the rear grip.
-            return className == "rifle" ? Make(new Vector3(0f, 0.09f, 0.07f), 25f) : Make(new Vector3(0f, 0.09f, 0f), 0f);
+            // Pistols: pushed 2 cm forward, so the hand sits a little further back on the grip.
+            if (className == "rifle")
+            {
+                return Make(new Vector3(0f, 0.09f, 0.07f), 25f);
+            }
+            return className == "pistol" ? Make(new Vector3(0f, 0.09f, 0.02f), 0f) : Make(new Vector3(0f, 0.09f, 0f), 0f);
         }
 
         // Bows (EAction.String), class "bow": the rifle's offset and 25 deg tilt, no roll. The bow is not turned by the animation's hold rotation here
@@ -62,10 +80,32 @@ namespace UnturnedVR.VR
             return Make(new Vector3(0f, 0.09f, 0.07f), 25f);
         }
 
+        // Built-in per-gun defaults (by GUID), tuned in the headset with the gun test (VRGunTest). They win over class lines of
+        // the file and the class defaults; an "item" line of the file still overrides them. Support / inward: null = the class value.
+        private struct ItemDefault
+        {
+            public Pose Pose;
+            public Vector3? Support;
+            public float? Inward;
+        }
+
+        private static readonly Dictionary<string, ItemDefault> builtInItems = new Dictionary<string, ItemDefault>
+        {
+            // Hell's Fury (id 1364), a minigun: trigger hand on the rear handle, second hand on the top handle.
+            ["e62c7cf4a9f44fed941eb065b7f19f5c"] = new ItemDefault
+            {
+                Pose = Make(new Vector3(0.05f, -0.16f, 0.12f), 25f),
+                Support = new Vector3(0f, 0.35f, -0.03f),
+                Inward = -0.17f,
+            },
+        };
+
         private static readonly Dictionary<string, Pose> classes =new Dictionary<string, Pose>();
         private static readonly Dictionary<string, Pose> items = new Dictionary<string, Pose>();
         private static readonly Dictionary<string, Vector3> classSupports = new Dictionary<string, Vector3>();
         private static readonly Dictionary<string, Vector3> itemSupports = new Dictionary<string, Vector3>();
+        private static readonly Dictionary<string, float> classInwards = new Dictionary<string, float>();
+        private static readonly Dictionary<string, float> itemInwards = new Dictionary<string, float>();
         private static readonly Dictionary<string, Vector2> smooths = new Dictionary<string, Vector2>(); // x = minCutoff, y = beta (NaN = default)
         private static DateTime loadedStamp = DateTime.MinValue;
         private static string path;
@@ -78,11 +118,19 @@ namespace UnturnedVR.VR
             className = bow ? "bow" : sizeClass;
             string guid = gun.GUID.ToString("N");
             string id = gun.id != 0 ? gun.id.ToString() : null;
+            // Order: an item line of the file, the built-in item default, a class line of the file, the class default.
+            bool hasBuiltIn = builtInItems.TryGetValue(guid, out ItemDefault builtIn);
             if (!(items.TryGetValue(guid, out Pose pose)
-                || (id != null && items.TryGetValue(id, out pose))
-                || classes.TryGetValue(className, out pose)))
+                || (id != null && items.TryGetValue(id, out pose))))
             {
-                pose = bow ? BowBuiltIn() : BuiltIn(className);
+                if (hasBuiltIn)
+                {
+                    pose = builtIn.Pose;
+                }
+                else if (!classes.TryGetValue(className, out pose))
+                {
+                    pose = bow ? BowBuiltIn() : BuiltIn(className);
+                }
             }
 
             // Where the second hand holds the gun: the Grip hook, else this fraction of the way to the muzzle,
@@ -90,13 +138,33 @@ namespace UnturnedVR.VR
             pose.SupportFraction = sizeClass == "pistol" ? 0.4f : sizeClass == "compact" ? 0.5f : 0.55f;
             pose.Support = Vector3.zero;
             if (!(itemSupports.TryGetValue(guid, out Vector3 support)
-                || (id != null && itemSupports.TryGetValue(id, out support))
-                || (bow && classSupports.TryGetValue(className, out support))
-                || classSupports.TryGetValue(sizeClass, out support)))
+                || (id != null && itemSupports.TryGetValue(id, out support))))
             {
-                support = Vector3.zero;
+                if (hasBuiltIn && builtIn.Support.HasValue)
+                {
+                    support = builtIn.Support.Value;
+                }
+                else if (!((bow && classSupports.TryGetValue(className, out support))
+                    || classSupports.TryGetValue(sizeClass, out support)))
+                {
+                    support = Vector3.zero;
+                }
             }
             pose.Support = support;
+            if (!(itemInwards.TryGetValue(guid, out float inward)
+                || (id != null && itemInwards.TryGetValue(id, out inward))))
+            {
+                if (hasBuiltIn && builtIn.Inward.HasValue)
+                {
+                    inward = builtIn.Inward.Value;
+                }
+                else if (!((bow && classInwards.TryGetValue(className, out inward))
+                    || classInwards.TryGetValue(sizeClass, out inward)))
+                {
+                    inward = !bow && sizeClass == "rifle" ? RifleSupportInward : 0f;
+                }
+            }
+            pose.SupportInward = inward;
             return pose;
         }
 
@@ -105,6 +173,26 @@ namespace UnturnedVR.VR
         /// holds it from below instead of sticking through the lenses. "optic" is the class line in the file, "item
         /// &lt;id|guid&gt;" overrides one item. Same file, same format; only the offset and rotation are used.
         /// </summary>
+        // Tune with "rodgrip <metres>" in the file (negative = lower, re-equip the rod).
+        private const float DefaultRodGrip = -0.45f;
+        private static float rodGrip = DefaultRodGrip;
+        private const float DefaultAxeGrip = -0.22f;
+        private static float axeGrip = DefaultAxeGrip;
+
+        /// <summary>Metres from an axe model's origin up the handle (towards the head) where the hand holds it.</summary>
+        public static float GetAxeGrip()
+        {
+            Reload();
+            return axeGrip;
+        }
+
+        /// <summary>Metres from the fishing rod model's origin up the rod (towards its tip) where the hand holds it.</summary>
+        public static float GetRodGrip()
+        {
+            Reload();
+            return rodGrip;
+        }
+
         public static Pose GetOptic(ItemOpticAsset optic, out string className)
         {
             Reload();
@@ -167,7 +255,11 @@ namespace UnturnedVR.VR
                 items.Clear();
                 classSupports.Clear();
                 itemSupports.Clear();
+                classInwards.Clear();
+                itemInwards.Clear();
                 smooths.Clear();
+                rodGrip = DefaultRodGrip;
+                axeGrip = DefaultAxeGrip;
                 foreach (string raw in File.ReadAllLines(path))
                 {
                     ParseLine(raw);
@@ -199,6 +291,50 @@ namespace UnturnedVR.VR
                         beta = parsedBeta;
                     }
                     smooths[parts[1].ToLowerInvariant()] = new Vector2(minCutoff, beta);
+                }
+                else
+                {
+                    VRLog.Warn("gun: ignored line in " + FileName + ": " + line);
+                }
+                return;
+            }
+            bool isRodGrip = parts[0].Equals("rodgrip", StringComparison.OrdinalIgnoreCase);
+            if (isRodGrip || parts[0].Equals("axegrip", StringComparison.OrdinalIgnoreCase))
+            {
+                // "rodgrip <metres>" / "axegrip <metres>": how far up the fishing rod (towards its tip) / the axe (towards its head) the hand holds it,
+                // measured from the model origin.
+                if (parts.Length >= 2 && TryFloat(parts[1], out float grip))
+                {
+                    if (isRodGrip)
+                    {
+                        rodGrip = grip;
+                    }
+                    else
+                    {
+                        axeGrip = grip;
+                    }
+                }
+                else
+                {
+                    VRLog.Warn("gun: ignored line in " + FileName + ": " + line);
+                }
+                return;
+            }
+            if (parts[0].Equals("inward", StringComparison.OrdinalIgnoreCase))
+            {
+                // "inward <class>|item <id|guid> <metres>": how far the drawn second hand sits in towards the gun (mirrored per hand).
+                bool inwardItem = parts.Length >= 2 && parts[1].Equals("item", StringComparison.OrdinalIgnoreCase);
+                int valueIndex = inwardItem ? 3 : 2;
+                if (parts.Length > valueIndex && TryFloat(parts[valueIndex], out float inward))
+                {
+                    if (inwardItem)
+                    {
+                        itemInwards[Guid.TryParse(parts[2], out Guid inwardGuid) ? inwardGuid.ToString("N") : parts[2]] = inward;
+                    }
+                    else
+                    {
+                        classInwards[parts[1].ToLowerInvariant()] = inward;
+                    }
                 }
                 else
                 {

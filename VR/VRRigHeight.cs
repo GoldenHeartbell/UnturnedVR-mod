@@ -81,7 +81,12 @@ namespace UnturnedVR.VR
 
                 calibrationHeadY = Hmd.localPosition.y;
                 hasCalibratedHeight = true;
-                VRLog.Info("first HMD pose received, height calibrated.");
+                float eyeHeight = MainCamera.instance != null ? MainCamera.instance.transform.localPosition.y : FallbackStandingEyeHeight;
+                VRLog.Info("first HMD pose received, height calibrated. "
+                    + (VRRig.InMenu ? "menu" : "in game") + ", HMD local y " + calibrationHeadY.ToString("F2")
+                    + ", game eye height " + eyeHeight.ToString("F2")
+                    + ", HMD world y " + Hmd.position.y.ToString("F2")
+                    + ", player.first world y " + (transform.parent != null ? transform.parent.position.y.ToString("F2") : "n/a") + ".");
             }
 
             // In the menu the rig hangs directly on the menu camera: no eye height to add.

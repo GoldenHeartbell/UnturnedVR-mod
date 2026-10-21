@@ -41,7 +41,7 @@ namespace UnturnedVR.VR
             public bool ModeActive = true;
         }
 
-        // Layout for Valve Index (see docs/progress.md). Hotbar flick on the right stick is phase 2.
+        // Layout for Valve Index. Hotbar flick on the right stick is phase 2.
         private static readonly Entry[] entries =
         {
             new Entry { Right = false, Button = VRButton.Trigger,    Key = () => ControlsSettings.primary, Role = 1 },

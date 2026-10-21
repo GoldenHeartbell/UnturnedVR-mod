@@ -1,0 +1,143 @@
+name: Bug report
+description: Something in UnturnedVR does not work or behaves strangely.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug!
+
+        **Title:** give the issue a short title above that says what goes wrong, for example:
+        `[Bug]: Left hand stays behind when driving a car`
+
+  - type: input
+    id: version
+    attributes:
+      label: Mod version
+      description: The UnturnedVR version you use. It is in the name of the zip you installed.
+      placeholder: "Example: 0.2.4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Where did it happen?
+      options:
+        - Singleplayer
+        - On a server that has the UnturnedVR server part installed
+        - On a server without the UnturnedVR server part
+        - Main menu / before loading into a game
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe shortly what went wrong, when it happened and what you were doing at that moment.
+      placeholder: |
+        Example: I got into a car in singleplayer on PEI. As soon as I started driving,
+        my left hand stayed at the spot where I entered the car instead of following me.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      placeholder: "Example: my left hand stays on the steering wheel while driving."
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The steps someone else can follow to see the same bug.
+      placeholder: |
+        1. Start a singleplayer game on PEI
+        2. Walk to a car and get in with the grip button
+        3. Drive forward
+        4. Look at your left hand
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does it happen?
+      options:
+        - Every time
+        - Sometimes
+        - Only once so far
+    validations:
+      required: true
+
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots / video
+      description: Drag and drop screenshots or a short video into this box. A video often shows the problem best.
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Drag and drop your log file into this box. You find it in your Unturned install folder under `Logs\Client.log` in the game folder. 
+        If you play on a server, the server owner can add `Logs/Server_<server name>.log` from the server folder.
+        
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: "## Your system"
+
+  - type: input
+    id: headset
+    attributes:
+      label: VR headset
+      placeholder: "Example: Steam Frame, Valve Index, Meta Quest 3, HTC Vive Pro 2"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: controllers
+    attributes:
+      label: Controllers
+      options:
+        - Valve Index controllers
+        - Steam Frame controllers
+        - Oculus / Meta Touch controllers
+        - HTC Vive wands
+        - Other (write it under "Anything else")
+    validations:
+      required: false
+
+  - type: dropdown
+    id: connection
+    attributes:
+      label: How is your headset connected to SteamVR?
+      options:
+        - PC VR headset with a cable (Index, Vive, Pico with cable, ...)
+        - Quest Link (cable)
+        - Quest Air Link
+        - Virtual Desktop
+        - Steam Link
+        - ALVR
+        - Other (write it under "Anything else")
+    validations:
+      required: false
+
+  - type: textarea
+    id: other
+    attributes:
+      label: Anything else
+      description: Other mods you use, settings you changed, or anything else that might help.
+    validations:
+      required: false

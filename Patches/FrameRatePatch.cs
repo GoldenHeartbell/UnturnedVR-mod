@@ -5,7 +5,7 @@ using UnityEngine;
 namespace UnturnedVR.Patches
 {
     /// <summary>
-    /// M3: removes the frame rate cap while VR is active. Confirmed in docs/unturned-internals.md
+    /// M3: removes the frame rate cap while VR is active.
     /// that GraphicsSettings.ApplyVSyncAndTargetFrameRate is the single call site setting
     /// Application.targetFrameRate (unlike FOV, which has no single choke point). A postfix that
     /// overrides its result is simpler than VHVR's transpiler and has the same effect: the XR

@@ -4,8 +4,8 @@ using SDG.Unturned;
 namespace UnturnedVR.Patches
 {
     /// <summary>
-    /// M3: PlayerLook.InitializePlayer runs once per local player spawn (confirmed in
-    /// docs/unturned-internals.md - it sets up characterCamera/scopeCamera/MainCamera's parent).
+    /// M3: PlayerLook.InitializePlayer runs once per local player spawn (confirmed:
+    /// it sets up characterCamera/scopeCamera/MainCamera's parent).
     /// It's an internal method (verify: HarmonyLib resolves it by name via reflection regardless
     /// of accessibility), so patch it by string rather than a typeof(...) method group.
     /// </summary>

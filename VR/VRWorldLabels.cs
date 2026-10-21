@@ -14,7 +14,8 @@ namespace UnturnedVR.VR
     /// reads what the game shows: for each visible widget it crops that widget's rectangle out of the UI texture (the same
     /// way the hint panel does) onto a quad at the widget's world anchor (the teammate's head spot, the hit point),
     /// turned towards the eye, scaled with distance so it keeps the screen size it has on the flat game. VRGui cuts the
-    /// same rectangles out of the HUD panel (the rects are added to the holes list) so each shows only once.
+    /// same rectangles out of the HUD panel (the rects are added to the holes list) so each shows only once. While a cursor
+    /// UI is open nothing is cropped, so the widgets are switched off for that frame instead (no holes in the menu).
     /// No depth test (VRGui's overlay camera), so teammates' names show through walls, like the game's own labels.
     /// All numbers are tuned by feel. Cost: reflection lookups once, then a few vector operations per widget.
     /// </summary>
@@ -61,7 +62,7 @@ namespace UnturnedVR.VR
         private float textureAspect;
         private float widthPerMeter;
         private List<Rect> holes;
-        private bool cutOnly;   // CutOut: add the holes, place no quads
+        private bool hideOnly;  // HideFlat: switch the game's widgets off, place no quads, cut no holes
 
         public VRWorldLabels(Transform parent, Material material, int layer)
         {
@@ -87,21 +88,20 @@ namespace UnturnedVR.VR
         }
 
         /// <summary>
-        /// Same as <see cref="Update"/> but draws nothing: only adds the rectangles of the game's own teammate names and hit
-        /// markers to <paramref name="holeRects"/>, so they are not drawn flat on the panel while a cursor UI (inventory,
-        /// pause menu) is open and the world quads are hidden.
+        /// While a cursor UI (inventory, pause menu) is open and the world quads are hidden: switches the game's own teammate
+        /// names and hit markers off for this frame, so they are not drawn flat over the menu. Called in LateUpdate, before
+        /// the UI camera renders; the game sets their visibility again in its next Update (PlayerUI.updateGroupLabels /
+        /// updateHitmarkers), so nothing of the game's state is kept changed.
         /// </summary>
-        public void CutOut(Vector2 canvas, List<Rect> holeRects)
+        public void HideFlat()
         {
             Hide();
-            canvasSize = canvas;
-            holes = holeRects;
             if (HudShown())
             {
-                cutOnly = true;
+                hideOnly = true;
                 AddGroupLabels();
                 AddHitmarkers();
-                cutOnly = false;
+                hideOnly = false;
             }
         }
 
@@ -184,6 +184,11 @@ namespace UnturnedVR.VR
                 {
                     continue;
                 }
+                if (hideOnly)
+                {
+                    label.IsVisible = false;
+                    continue;
+                }
 
                 if (AddPiece(RectOf(label), client.model.position + Vector3.up * GroupLabelHeight, LabelMinDistance) && !loggedLabel)
                 {
@@ -207,6 +212,11 @@ namespace UnturnedVR.VR
                 SleekHitmarker element = info.sleekElement;
                 if (element == null || !element.IsVisible)
                 {
+                    continue;
+                }
+                if (hideOnly)
+                {
+                    element.IsVisible = false;
                     continue;
                 }
 
@@ -238,12 +248,6 @@ namespace UnturnedVR.VR
             if (u1 <= u0 || v1 <= v0)
             {
                 return false; // entirely off the canvas
-            }
-
-            if (cutOnly)
-            {
-                holes.Add(canvasRect);
-                return false;
             }
 
             Piece piece = GetPiece(used++);

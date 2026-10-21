@@ -16,11 +16,16 @@ namespace UnturnedVR.VR
     {
         private const float Interval = 0.05f;
 
+        /// <summary>The opt-in is repeated this often: the first one can be dropped (the player was still loading), and a repeat costs one byte.</summary>
+        private const float OptInInterval = 10f;
+
         private static ServerStaticMethod sendPose;
         private static ServerStaticMethod sendShotPose;
+        private static ServerStaticMethod sendOptIn;
         private static VRNetPoseSender instance;
 
         private float nextSend;
+        private float nextOptIn;
         private uint sequence;
 
         public static void Create()
@@ -89,7 +94,15 @@ namespace UnturnedVR.VR
 
         private void Update()
         {
-            if (Time.unscaledTime < nextSend || !VRNet.ServerAcceptsPoses)
+            if (!VRNet.ServerAcceptsPoses)
+            {
+                nextOptIn = 0f; // the next server hears it at once
+                return;
+            }
+
+            SendOptIn();
+
+            if (Time.unscaledTime < nextSend)
             {
                 return;
             }
@@ -122,6 +135,34 @@ namespace UnturnedVR.VR
             sendPose.Invoke(ENetReliability.Unreliable, WritePose, Capture(eye, player, true));
         }
 
+        /// <summary>Tells the server this game can show other players' VR hands (Net/VRNetRelay), at once and then every few seconds.</summary>
+        private void SendOptIn()
+        {
+            if (Time.unscaledTime < nextOptIn)
+            {
+                return;
+            }
+            nextOptIn = Time.unscaledTime + OptInInterval;
+
+            if (sendOptIn == null)
+            {
+                sendOptIn = ServerStaticMethod.Get(typeof(VRNetRpc), nameof(VRNetRpc.ReceiveRelayOptIn));
+                if (sendOptIn == null)
+                {
+                    VRLog.Warn("pose sender: the game has no handle for the relay opt-in RPC, other players' hands will not be shown.");
+                    nextOptIn = float.MaxValue;
+                    return;
+                }
+            }
+
+            sendOptIn.Invoke(ENetReliability.Reliable, WriteOptIn);
+        }
+
+        private static void WriteOptIn(NetPakWriter writer)
+        {
+            writer.WriteUInt8(VRNetProtocol.Version);
+        }
+
         private VRPoseData Capture(Camera eye, Player player, bool includeMuzzle)
         {
             VRPoseData pose = default;
@@ -146,6 +187,7 @@ namespace UnturnedVR.VR
             }
 
             int itemHand = VRArms.Active ? VRArms.ItemHand : -1;
+            pose.TwoHanded = VRArms.Active && VRHold.Both;
             pose.ItemHand = itemHand == VRHands.Left ? VRPoseData.ItemHandLeft : itemHand == VRHands.Right ? VRPoseData.ItemHandRight : VRPoseData.ItemHandNone;
 
             // The muzzle is sent under the same condition the client shoots from it (a gun in a hand, no wall between the head and the

@@ -11,7 +11,6 @@ namespace UnturnedVR.Net
     /// (2) refuse senders that are not a live player, (3) read the whole payload or drop it, (4) bounds-check what it read
     /// against what the server itself knows about that player, and (5) never log or store anything the client chose
     /// without a size limit. A failed check drops the message; it never changes game state.
-    /// See docs/networking-security.md.
     /// </summary>
     internal static class VRNetGuard
     {
@@ -70,6 +69,7 @@ namespace UnturnedVR.Net
             }
             states.Clear();
             VRNetPoseStore.Clear();
+            VRNetRelay.Clear();
         }
 
         private static void OnServerDisconnected(CSteamID steamID)
@@ -77,6 +77,7 @@ namespace UnturnedVR.Net
             states.Remove(steamID.m_SteamID);
             VRNetPoseStore.Forget(steamID.m_SteamID);
             VRNetServerTicker.Forget(steamID.m_SteamID);
+            VRNetRelay.Forget(steamID.m_SteamID);
         }
 
         /// <summary>
@@ -251,7 +252,7 @@ namespace UnturnedVR.Net
             state.NextRejectedLog = now + RejectedLogInterval;
 
             // Only the numeric Steam id is logged: names and anything else the client chose could carry control characters.
-            NetLog.Warn("net: dropped " + reason + " from " + sender.Id + " (" + state.Rejected + " dropped from them so far).");
+            VRLog.Warn("net: dropped " + reason + " from " + sender.Id + " (" + state.Rejected + " dropped from them so far).");
         }
 
         private static SenderState GetState(ulong id)

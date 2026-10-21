@@ -2,29 +2,41 @@ using System;
 using System.Runtime.CompilerServices;
 using SDG.Unturned;
 
-namespace UnturnedVR.Net
+namespace UnturnedVR
 {
     /// <summary>
-    /// Logging for the shared (client and server) assembly: "[UnturnedVR] ClassName: message" in Unturned's log, the class name
-    /// taken from the calling source file like VRLog does.
+    /// Single logging entry point for the mod, client and server. Writes to Unturned's log as "[UnturnedVR] ClassName: message";
+    /// the class name is taken from the calling source file's name (files are named after their class), so call sites only
+    /// pass the message. Lives in the shared assembly because a dedicated server only loads UnturnedVR.Net.dll; the client
+    /// assembly sees it through InternalsVisibleTo.
     /// </summary>
-    internal static class NetLog
+    internal static class VRLog
     {
         private const string Tag = "[UnturnedVR] ";
 
         public static void Info(string message, [CallerFilePath] string caller = "")
         {
-            UnturnedLog.info(Tag + ClassName(caller) + ": " + message);
+            UnturnedLog.info(Format(message, caller));
         }
 
         public static void Warn(string message, [CallerFilePath] string caller = "")
         {
-            UnturnedLog.warn(Tag + ClassName(caller) + ": " + message);
+            UnturnedLog.warn(Format(message, caller));
         }
 
         public static void Error(string message, [CallerFilePath] string caller = "")
         {
-            UnturnedLog.error(Tag + ClassName(caller) + ": " + message);
+            UnturnedLog.error(Format(message, caller));
+        }
+
+        public static void Exception(Exception exception, [CallerFilePath] string caller = "")
+        {
+            UnturnedLog.exception(exception, Format("exception:", caller));
+        }
+
+        private static string Format(string message, string caller)
+        {
+            return Tag + ClassName(caller) + ": " + message;
         }
 
         /// <summary>
@@ -32,7 +44,7 @@ namespace UnturnedVR.Net
         /// so it is split on both separators: System.IO.Path only knows the running machine's own, and on a Linux server it
         /// would print the whole build path.
         /// </summary>
-        internal static string ClassName(string path)
+        private static string ClassName(string path)
         {
             if (string.IsNullOrEmpty(path))
             {

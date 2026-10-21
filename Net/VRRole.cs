@@ -79,16 +79,16 @@ namespace UnturnedVR.Net
                     + (clientAssemblies.Count == 0 ? "none" : string.Join(", ", clientAssemblies.ToArray())) + ".";
                 if (patchedMethods == 0 && clientAssemblies.Count == 0)
                 {
-                    NetLog.Info(summary);
+                    VRLog.Info(summary);
                 }
                 else
                 {
-                    NetLog.Error(summary + " Client code is running on a server; this is a bug.");
+                    VRLog.Error(summary + " Client code is running on a server; this is a bug.");
                 }
             }
             catch (Exception e)
             {
-                NetLog.Warn("role check failed: " + e.Message);
+                VRLog.Warn("role check failed: " + e.Message);
             }
         }
     }

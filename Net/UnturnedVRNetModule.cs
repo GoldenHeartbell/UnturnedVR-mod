@@ -21,18 +21,21 @@ namespace UnturnedVR.Net
 
         public void initialize()
         {
-            NetLog.Info("UnturnedVR.Net " + typeof(UnturnedVRNetModule).Assembly.GetName().Version.ToString(3) + " initializing...");
+            VRLog.Info("UnturnedVR.Net " + typeof(UnturnedVRNetModule).Assembly.GetName().Version.ToString(3) + " initializing...");
 
             VRNet.Register();
 
             // Says hello to joining players when this process is a server; does nothing on a plain client.
             VRNetServerTicker.Create();
 
+            // Relays VR players' poses to the players who opted in; does nothing on a plain client.
+            VRNetRelay.Create();
+
             ApplyServerPatches();
 
             if (VRRole.IsDedicatedServer)
             {
-                NetLog.Info("running on a dedicated server: no VR, no client patches.");
+                VRLog.Info("running on a dedicated server: no VR, no client patches.");
                 VRRole.AuditDedicatedServer(HarmonyId);
             }
         }
@@ -55,11 +58,11 @@ namespace UnturnedVR.Net
                 {
                     ++patched;
                 }
-                NetLog.Info("net: server patches applied: " + patched + " method(s) (rocket launcher muzzle).");
+                VRLog.Info("net: server patches applied: " + patched + " method(s) (rocket launcher muzzle).");
             }
             catch (Exception e)
             {
-                NetLog.Warn("net: server patches failed, the game keeps its own behaviour: " + e.Message);
+                VRLog.Warn("net: server patches failed, the game keeps its own behaviour: " + e.Message);
             }
         }
     }

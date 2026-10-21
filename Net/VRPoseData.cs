@@ -10,13 +10,15 @@ namespace UnturnedVR.Net
     internal static class VRNetProtocol
     {
         // 2: added ReceiveShotPose (the pose at the instant of a launcher shot).
-        public const byte Version = 2;
+        // 3: the pose has a two-handed bit, and the server relays poses to other players (ReceiveRelayOptIn, ReceiveRelayPoses).
+        // 4: the relayed hands and muzzle are relative to the head, not to the body (same layout, different meaning).
+        public const byte Version = 4;
     }
 
     /// <summary>
     /// What a VR client tells the server about the player: head, hands, which hand holds the item, and the gun's muzzle. World space.
     /// The write and read code is here, in the assembly both sides load, so the two can never drift apart. The size is bounded:
-    /// at most 32 + 5 + 3 x (60 + 27) + 60 + 27 bits, about 48 bytes.
+    /// at most 32 + 6 + 3 x (60 + 27) + 60 + 27 bits, about 48 bytes.
     /// </summary>
     internal struct VRPoseData
     {
@@ -35,6 +37,9 @@ namespace UnturnedVR.Net
         /// <summary>The gun can fire from its muzzle (the same condition the client uses to shoot from it); else the vanilla head aim applies.</summary>
         public bool HasMuzzle;
 
+        /// <summary>Both hands hold the item (the second hand is on the gun's grip point). Only used to show it to other players.</summary>
+        public bool TwoHanded;
+
         public Vector3 HeadPosition;
         public Quaternion HeadRotation;
         public Vector3 LeftPosition;
@@ -51,6 +56,7 @@ namespace UnturnedVR.Net
             writer.WriteBit(LeftTracked);
             writer.WriteBit(RightTracked);
             writer.WriteBit(HasMuzzle);
+            writer.WriteBit(TwoHanded);
 
             writer.WriteClampedVector3(HeadPosition);
             writer.WriteQuaternion(HeadRotation);
@@ -85,7 +91,8 @@ namespace UnturnedVR.Net
                 return false;
             }
             pose.ItemHand = (byte) itemHand;
-            if (!reader.ReadBit(out pose.LeftTracked) || !reader.ReadBit(out pose.RightTracked) || !reader.ReadBit(out pose.HasMuzzle))
+            if (!reader.ReadBit(out pose.LeftTracked) || !reader.ReadBit(out pose.RightTracked) || !reader.ReadBit(out pose.HasMuzzle)
+                || !reader.ReadBit(out pose.TwoHanded))
             {
                 return false;
             }

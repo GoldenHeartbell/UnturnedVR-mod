@@ -43,7 +43,7 @@ namespace UnturnedVR.Net
             }
             catch (Exception e)
             {
-                NetLog.Warn("net: launcher muzzle failed, the vanilla aim is used: " + e.Message);
+                VRLog.Warn("net: launcher muzzle failed, the vanilla aim is used: " + e.Message);
             }
         }
 

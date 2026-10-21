@@ -60,7 +60,6 @@ namespace UnturnedVR.VR
     /// Adapted from ValheimVRMod's VRCore/VRManager.cs, trimmed to the display path only - no
     /// SteamVR_Input/Actions here, that belongs to M5 (controller input) and pulls in a much
     /// larger dependency (SteamVR.dll, SteamVR_Actions.dll, ...) we don't need yet.
-    /// See docs/unturned-internals.md and docs/progress.md for the M0/M2 recon this relies on.
     /// </summary>
     internal static class VRManager
     {

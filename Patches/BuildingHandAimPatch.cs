@@ -5,7 +5,7 @@ using UnityEngine;
 namespace UnturnedVR.Patches
 {
     /// <summary>
-    /// Building (barricades, structures, the housing planner) aims with player.look.aim, which in VR follows the
+    /// Building (barricades, structures, the housing planner) and the fertilizer (UseableGrower) aim with player.look.aim, which in VR follows the
     /// head. With the "Building: Hand based" control setting (VRSettings.BuildingHandBased) the placement checks run
     /// with that aim, and for barricades the main camera's forward too (it orients wall mounted items), moved to
     /// the hand that holds the item (the same hand as the interact ray), for the duration of the call only; both
@@ -110,6 +110,22 @@ namespace UnturnedVR.Patches
         }
 
         private static void Finalizer(UseableStructure __instance, BuildingHandAim.Saved __state)
+        {
+            BuildingHandAim.End(__instance.player, __state);
+        }
+    }
+
+    // Fertilizer (UseableGrower): fire() (private) raycasts 3 m from player.look.aim at the planted crop, on the click
+    // only (no preview), and on the server checks the hit point against the aim position (7 m).
+    [HarmonyPatch(typeof(UseableGrower), "fire")]
+    internal static class BuildingHandAimGrowerPatch
+    {
+        private static void Prefix(UseableGrower __instance, out BuildingHandAim.Saved __state)
+        {
+            __state = BuildingHandAim.Begin(__instance.player, __instance.channel, alsoMainCamera: false);
+        }
+
+        private static void Finalizer(UseableGrower __instance, BuildingHandAim.Saved __state)
         {
             BuildingHandAim.End(__instance.player, __state);
         }

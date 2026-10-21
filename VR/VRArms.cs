@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using SDG.Unturned;
 using UnityEngine;
+using Arm = UnturnedVR.VR.VRArmIK.Arm;
 
 namespace UnturnedVR.VR
 {
@@ -53,26 +55,6 @@ namespace UnturnedVR.VR
         /// <summary>Hooks further than this sideways from the root (unscaled units) mean the rig is still in its T-pose.</summary>
         private const float MaxSaneHookX = 0.8f;
 
-        private struct Arm
-        {
-            public Transform Pivot;  // *_Shoulder: no skin weight, pinned at rest
-            public Transform Upper;  // *_Arm: the visible shoulder joint
-            public Transform Lower;  // *_Hand: the visible elbow
-            public Transform Hook;   // palm end
-            public Vector3 PivotRestPosition;
-            public Quaternion PivotRestRotation;
-            public Vector3 UpperRestPosition;    // under Pivot
-            public Quaternion UpperRestRotation;
-            public Vector3 LowerRestPosition;    // under Upper
-            public Quaternion LowerRestRotation;
-            public Vector3 HookRestPosition;     // under Lower
-            public Quaternion HookRestRotation;
-            public Vector3 UpperAxis;            // direction (in Upper's local space) from Upper to Lower
-            public Vector3 LowerAxis;            // direction (in Lower's local space) from Lower to Hook
-            public Vector3 TopLocal;             // the forearm block's top face (in Lower's local space): the rig's up at resolve
-            public Vector3 InnerLocal;           // the face that looks at the body when the arm is held forward (Lower's local space)
-        }
-
         private static VRArms instance;
 
         /// <summary>True while the arms are driven by VR; the VR camera must then draw the viewmodel layer.</summary>
@@ -84,6 +66,9 @@ namespace UnturnedVR.VR
         /// <summary>World position where the second hand holds the equipped gun (VRHold grabs there), if it has one.</summary>
         public static Vector3 SupportPoint { get; private set; }
         public static bool SupportValid { get; private set; }
+
+        /// <summary>The equipped gun's aim frame this frame (the controller turned by the gun's class pose): forward along the barrel, up as held.</summary>
+        public static Quaternion AimFrame { get; private set; } = Quaternion.identity;
 
         private PlayerAnimator animator;
         private Transform root;
@@ -108,6 +93,9 @@ namespace UnturnedVR.VR
         private bool itemIsGun;
         private bool itemIsOptic;      // binoculars: moved off the hand by opticPose
         private VRGunTuning.Pose opticPose;
+        private bool itemSlides;       // fishing rod / axe: slid along its own length so the hand holds it somewhere else on the handle
+        private Vector3 slideTipLocal; // model-local unit vector from the model origin towards the rod's tip / the axe's head
+        private float slideLength;     // metres the hand sits up that axis from the model origin (negative = towards the butt; VRGunTuning.GetRodGrip / GetAxeGrip)
         // The item is posed on its hand before the calibration wait is over, from the vanilla hold as it is animated
         // right now, so it appears in its place (the drawing hand, the offset of binoculars or a gun) and does not jump
         // there once the equip animation ends. The model's own local pose is remembered because posing it changes it
@@ -123,6 +111,7 @@ namespace UnturnedVR.VR
         private Vector3 supportLocal;  // that point in the model's local space
         private VRGunTuning.Pose gunPose; // offset/pitch of the equipped gun relative to the controller (gun-offsets.txt)
         private Quaternion itemToRoot = Quaternion.identity;
+        private Quaternion activeHold = Quaternion.identity; // itemToRoot, or what DriveItem replaced it with for a bow / a gun swung straight
         private Vector3 itemBaseScale = Vector3.one;
         private bool loggedGiveUp;
         private bool running;
@@ -240,44 +229,7 @@ namespace UnturnedVR.VR
 
         private static bool ResolveArm(Transform root, Transform spine, string side, out Arm arm)
         {
-            arm = default;
-            Transform pivot = spine.Find(side + "_Shoulder");
-            Transform upper = pivot != null ? pivot.Find(side + "_Arm") : null;
-            Transform lower = upper != null ? upper.Find(side + "_Hand") : null;
-            Transform hook = lower != null ? lower.Find(side + "_Hook") : null;
-            if (hook == null)
-            {
-                return false;
-            }
-
-            arm.Pivot = pivot;
-            arm.Upper = upper;
-            arm.Lower = lower;
-            arm.Hook = hook;
-            arm.PivotRestPosition = pivot.localPosition;
-            arm.PivotRestRotation = pivot.localRotation;
-            arm.UpperRestPosition = upper.localPosition;
-            arm.UpperRestRotation = upper.localRotation;
-            arm.LowerRestPosition = lower.localPosition;
-            arm.LowerRestRotation = lower.localRotation;
-            arm.HookRestPosition = hook.localPosition;
-            arm.HookRestRotation = hook.localRotation;
-            arm.UpperAxis = lower.localPosition.normalized;
-            arm.LowerAxis = hook.localPosition.normalized;
-
-            // Which face of the forearm block is the top: the one that points up in the rest pose (T-pose, arms out to the
-            // sides, so up is square to the arm). The block's roll later comes only from the smallest swing, so this face
-            // keeps pointing up while the arm points forward. Assumes the rest pose is upright; logged in Resolve.
-            Vector3 top = Vector3.ProjectOnPlane(Quaternion.Inverse(lower.rotation) * root.up, arm.LowerAxis);
-            arm.TopLocal = top.sqrMagnitude > 0.0001f ? top.normalized : Vector3.up;
-
-            // Inner face: from the T-pose (arm out to its side, top up), turning the arm forward carries the face with
-            // normal cross(top, axis) towards the body on the arm that lies out to the viewer's left, and the opposite
-            // face on the one out to the right. Logged in Resolve.
-            Vector3 axisWorld = lower.rotation * arm.LowerAxis;
-            float inwardSign = Vector3.Dot(axisWorld, root.right) < 0f ? 1f : -1f;
-            arm.InnerLocal = (inwardSign * Vector3.Cross(arm.TopLocal, arm.LowerAxis)).normalized;
-            return true;
+            return VRArmIK.TryResolve(root, spine, side, out arm);
         }
 
         /// <summary>
@@ -395,7 +347,9 @@ namespace UnturnedVR.VR
             VRAds.PlaceScopeCamera();
             VRBinoculars.PlaceCamera();
             VRLaser.Update(); // the laser dot follows the muzzle; the game placed it from the head earlier this frame
-            VRFlashlight.Update(); // the beam of a switched-on flashlight starts at the light, not at the eyes
+            // The beam of a switched-on flashlight starts at the light, not at the eyes, and goes the way the hand frame
+            // points (the item's final pose without its hold rotation, as the game aims along the root's forward).
+            VRFlashlight.Update(lastModel != null ? lastModel.rotation * Quaternion.Inverse(activeHold) : (Quaternion?)null);
             VRAttachMenu.CachePanelPose(head.position); // the gun is in its final place now
             if (allowCalibrate)
             {
@@ -427,6 +381,7 @@ namespace UnturnedVR.VR
                 loggedGiveUp = false;
                 itemIsGun = false; // the pose of the previous item must not apply while this one is not calibrated
                 itemIsOptic = false;
+                itemSlides = false;
                 hasSupport = false;
                 provisionalReady = false;
                 provisionalDriven = false;
@@ -472,6 +427,10 @@ namespace UnturnedVR.VR
                         gunPose = VRGunTuning.Get(provisionalGun, out _);
                         itemIsGun = true;
                     }
+                    else
+                    {
+                        itemSlides = TryPrepareSlide(model, player.equipment.asset, out slideTipLocal, out slideLength, out _, out _, out _);
+                    }
                     provisionalReady = true;
                 }
             }
@@ -501,8 +460,18 @@ namespace UnturnedVR.VR
             provisionalPending = false;
             itemIsGun = false;
             itemIsOptic = false;
+            itemSlides = TryPrepareSlide(model, player.equipment.asset, out slideTipLocal, out slideLength, out string slideKind,
+                out float towardsTip, out float towardsButt);
             VRPerf.LogModel(model);
-            if (player.equipment.asset is ItemOpticAsset opticAsset)
+            if (slideKind != null)
+            {
+                ItemAsset slideAsset = player.equipment.asset;
+                VRLog.Info(slideKind + ": \"" + model.name + "\" id " + slideAsset.id + " guid " + slideAsset.GUID.ToString("N") + " \"" + slideAsset.name + "\", "
+                    + (itemSlides ? (slideKind == "axe" ? "head" : "tip") + " along model " + slideTipLocal.ToString("0.00") + " (" + towardsTip.ToString("0.00")
+                        + " m beyond the origin, " + towardsButt.ToString("0.00") + " m behind it), hand " + slideLength.ToString("0.00") + " m up the handle"
+                        : "no mesh found, it stays as the animation holds it") + ".");
+            }
+            else if (player.equipment.asset is ItemOpticAsset opticAsset)
             {
                 itemIsOptic = true;
                 opticPose = VRGunTuning.GetOptic(opticAsset, out string opticClass);
@@ -531,7 +500,7 @@ namespace UnturnedVR.VR
                     hasSupport = true;
                 }
                 VRLog.Info("gun: second-hand point " + (hasSupport ? (attachments.gripHook != null ? "Grip hook " : "barrel x " + gunPose.SupportFraction.ToString("0.00") + " ")
-                    + supportLocal + ", moved by " + gunPose.Support : "none (no Grip or Barrel hook), the hand stays on the controller") + ".");
+                    + supportLocal + ", moved by " + gunPose.Support + ", hand " + gunPose.SupportInward.ToString("0.00") + " m in towards the gun" :"none (no Grip or Barrel hook), the hand stays on the controller") + ".");
             }
             itemCalibrated = true;
             VRLog.Info("arms: calibrated item orientation for \"" + model.name + "\".");
@@ -548,70 +517,10 @@ namespace UnturnedVR.VR
             DriveArmTo(arm, anchor.position, anchor.forward, yaw, side);
         }
 
-        // The hand (hook) goes to target; forward is the way the forearm should roughly point (elbow side).
-        // roll: extra twist of the forearm about its own axis in degrees (0 for a hand on a controller). With levelWeight > 0
-        // the roll is measured from "top face up" instead of from the smallest swing, blended in by levelWeight.
+        // The hand (hook) goes to target; forward is the way the forearm should roughly point (elbow side). See VRArmIK.DriveTo.
         private void DriveArmTo(Arm arm, Vector3 target, Vector3 forward, Quaternion yaw, float side, float roll = 0f, float levelWeight = 0f)
         {
-            // The shoulder joint (*_Arm) stays where the skin expects it: pivot at rest, *_Arm at its rest offset.
-            arm.Pivot.SetLocalPositionAndRotation(arm.PivotRestPosition, arm.PivotRestRotation);
-            arm.Upper.localPosition = arm.UpperRestPosition;
-            Vector3 lowerPosition = arm.LowerRestPosition + arm.UpperAxis * ElbowStretch;
-            arm.Lower.localPosition = lowerPosition;
-            arm.Hook.SetLocalPositionAndRotation(arm.HookRestPosition, arm.HookRestRotation);
-
-            float upperLength = lowerPosition.magnitude * ArmScale; // shoulder joint -> elbow
-            float lowerLength = arm.HookRestPosition.magnitude * ArmScale;  // elbow -> hook (forearm + hand block)
-
-            // Hook target: the controller, as far as the arm reaches (it never stretches).
-            Vector3 shoulder = arm.Upper.position;
-            Vector3 toTarget = target - shoulder;
-            float distance = toTarget.magnitude;
-            if (distance < 0.0001f)
-            {
-                return;
-            }
-            Vector3 direction = toTarget / distance;
-            distance = Mathf.Clamp(distance, Mathf.Abs(upperLength - lowerLength) + 0.01f, upperLength + lowerLength - 0.005f);
-            Vector3 hook = shoulder + direction * distance;
-
-            // Elbow circle of the two-bone IK; take the point nearest to where the controller's forward would put it.
-            float along = (upperLength * upperLength - lowerLength * lowerLength + distance * distance) / (2f * distance);
-            float radius = Mathf.Sqrt(Mathf.Max(0f, upperLength * upperLength - along * along));
-            Vector3 center = shoulder + direction * along;
-            Vector3 wanted = hook - forward * lowerLength - center;
-            wanted -= Vector3.Dot(wanted, direction) * direction;
-            if (wanted.sqrMagnitude < 0.0001f)
-            {
-                wanted = yaw * new Vector3(side * 0.35f, -1f, -0.25f); // controller points along the arm: bend down and out
-                wanted -= Vector3.Dot(wanted, direction) * direction;
-            }
-            Vector3 elbow = center + wanted.normalized * radius;
-
-            // Smallest swing from the rest pose, so the result depends only on where the bones must point.
-            Quaternion upperRest = arm.Pivot.rotation * arm.UpperRestRotation;
-            Quaternion upperRotation = Quaternion.FromToRotation(upperRest * arm.UpperAxis, elbow - shoulder) * upperRest;
-            arm.Upper.rotation = upperRotation;
-
-            Quaternion lowerRest = upperRotation * arm.LowerRestRotation;
-            Quaternion lowerRotation = Quaternion.FromToRotation(lowerRest * arm.LowerAxis, hook - elbow) * lowerRest;
-            Vector3 forearmAxis = (hook - elbow).normalized;
-            Vector3 upAcross = Vector3.ProjectOnPlane(Vector3.up, forearmAxis);
-            if (levelWeight > 0f && upAcross.sqrMagnitude > 0.04f)
-            {
-                // The top face is put straight towards the world's up (then turned by roll), whatever twist the smallest
-                // swing left in the arm; the swing's own twist is what made the arm swirl when it points across the body.
-                Vector3 desiredTop = Quaternion.AngleAxis(roll, forearmAxis) * upAcross.normalized;
-                Vector3 currentTop = lowerRotation * arm.TopLocal;
-                float angle = Vector3.SignedAngle(currentTop, desiredTop, forearmAxis);
-                Quaternion leveled = Quaternion.AngleAxis(angle, forearmAxis) * lowerRotation;
-                lowerRotation = Quaternion.Slerp(lowerRotation, leveled, levelWeight);
-            }
-            else if (roll != 0f)
-            {
-                lowerRotation = Quaternion.AngleAxis(roll, forearmAxis) * lowerRotation;
-            }
-            arm.Lower.rotation = lowerRotation;
+            VRArmIK.DriveTo(arm, target, forward, yaw, side, ArmScale, ElbowStretch, roll, levelWeight);
         }
 
         // The equipped item sits on the controller, turned like it, at its normal size (the rig is scaled down).
@@ -632,6 +541,13 @@ namespace UnturnedVR.VR
             else if (lastModel.parent == left.Hook)
             {
                 hand = swapped ? VRHands.Right : VRHands.Left;
+            }
+            else if (itemIsGun)
+            {
+                // A gun whose asset hangs it on the spine instead of a hand (EquipableModelParent Spine / SpineHook, e.g. the
+                // Palmov id 7098 and the Javelin id 6908): it went to the head with the vanilla view. It goes in the trigger
+                // hand, like a gun on the right hook.
+                hand = swapped ? VRHands.Left : VRHands.Right;
             }
             else
             {
@@ -706,6 +622,7 @@ namespace UnturnedVR.VR
                 position += rotation * gunPose.Offset;
                 rotation *= gunPose.Rotation;
                 aimFrame = rotation; // barrel along its forward axis
+                AimFrame = aimFrame;
             }
             else if (itemIsOptic)
             {
@@ -722,7 +639,12 @@ namespace UnturnedVR.VR
             {
                 hold = straightHold; // barrel pointing well off the controller forward in the animation (shotguns): swung straight
             }
+            activeHold = hold;
             rotation *= hold;
+            if (itemSlides)
+            {
+                position -= rotation * slideTipLocal * slideLength; // slid through the hand: the hand ends up slideLength up the handle (negative = lower)
+            }
 
             if (itemIsGun)
             {
@@ -783,7 +705,7 @@ namespace UnturnedVR.VR
                     bool onRigLeft = offHand == (swapped ? VRHands.Right : VRHands.Left);
                     float side = offHand == VRHands.Left ? -1f : 1f; // viewer's left / right
                     Vector3 outward = side * (yaw * Vector3.right);
-                    Vector3 grip = SupportPoint + outward * SupportHandSideShift;
+                    Vector3 grip = SupportPoint + outward * (SupportHandSideShift - gunPose.SupportInward);
                     Vector3 target = Vector3.Lerp(offAnchor.position, grip, twoHandWeight);
                     Vector3 elbowDirection = (-(aimFrame * Vector3.forward) * 0.4f + outward * 0.9f + Vector3.down * 0.5f).normalized;
                     DriveArmTo(onRigLeft ? left : right, target, -elbowDirection, yaw, side, -side * SupportHandRoll, twoHandWeight);
@@ -831,6 +753,126 @@ namespace UnturnedVR.VR
         private static Vector3 Wrap(Vector3 euler)
         {
             return new Vector3(Mathf.DeltaAngle(0f, euler.x), Mathf.DeltaAngle(0f, euler.y), Mathf.DeltaAngle(0f, euler.z));
+        }
+
+        // A hand-held tool whose hold is slid along its handle: a fishing rod ("rod") or an axe ("axe"; the game has no axe flag, so the
+        // asset's file name or item name contains "axe", pickaxes included). Finds the handle's long axis in the model's local space and
+        // which way the tip / head is: the model's longest mesh extent; the tip of a rod is the end further from the origin (GUESS: the origin
+        // is at the handle), the head of an axe the end with the thicker cross-section (else also the end further from the origin).
+        // length = the "rodgrip" / "axegrip" value of gun-offsets.txt. Distances in metres. Returns false (kind set) when the model has no mesh.
+        private static bool TryPrepareSlide(Transform model, ItemAsset asset, out Vector3 tip, out float length, out string kind, out float towardsTip, out float towardsButt)
+        {
+            tip = Vector3.forward;
+            length = 0f;
+            towardsTip = 0f;
+            towardsButt = 0f;
+            kind = null;
+            if (asset is ItemFisherAsset)
+            {
+                kind = "rod";
+            }
+            else if (asset is ItemMeleeAsset && (IsAxeName(asset.name) || IsAxeName(asset.itemName)))
+            {
+                kind = "axe";
+            }
+            if (kind == null)
+            {
+                return false;
+            }
+            length = kind == "rod" ? VRGunTuning.GetRodGrip() : VRGunTuning.GetAxeGrip();
+
+            List<Vector3> points = new List<Vector3>();
+            foreach (Renderer renderer in model.GetComponentsInChildren<Renderer>(false))
+            {
+                Mesh mesh = renderer is SkinnedMeshRenderer skinned ? skinned.sharedMesh
+                    : renderer is MeshRenderer && renderer.TryGetComponent(out MeshFilter filter) ? filter.sharedMesh : null;
+                if (mesh == null)
+                {
+                    continue;
+                }
+                if (kind == "axe" && mesh.isReadable)
+                {
+                    foreach (Vector3 vertex in mesh.vertices)
+                    {
+                        points.Add(model.InverseTransformPoint(renderer.transform.TransformPoint(vertex)));
+                    }
+                    continue;
+                }
+                Bounds bounds = mesh.bounds;
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 local = bounds.center + Vector3.Scale(bounds.extents,
+                        new Vector3((corner & 1) == 0 ? -1f : 1f, (corner & 2) == 0 ? -1f : 1f, (corner & 4) == 0 ? -1f : 1f));
+                    points.Add(model.InverseTransformPoint(renderer.transform.TransformPoint(local)));
+                }
+            }
+            if (points.Count == 0)
+            {
+                return false;
+            }
+
+            Vector3 min = points[0];
+            Vector3 max = points[0];
+            foreach (Vector3 point in points)
+            {
+                min = Vector3.Min(min, point);
+                max = Vector3.Max(max, point);
+            }
+            Vector3 size = max - min;
+            int axis = size.x >= size.y && size.x >= size.z ? 0 : size.y >= size.z ? 1 : 2;
+            bool positive = Mathf.Abs(max[axis]) >= Mathf.Abs(min[axis]);
+
+            if (kind == "axe")
+            {
+                // Cross-section (widest range over the two other axes) in the outer quarter at each end of the handle.
+                float quarter = size[axis] * 0.25f;
+                int a = (axis + 1) % 3;
+                int b = (axis + 2) % 3;
+                Vector2 lowMin = new Vector2(float.MaxValue, float.MaxValue);
+                Vector2 lowMax = new Vector2(float.MinValue, float.MinValue);
+                Vector2 highMin = lowMin;
+                Vector2 highMax = lowMax;
+                foreach (Vector3 point in points)
+                {
+                    Vector2 across = new Vector2(point[a], point[b]);
+                    if (point[axis] <= min[axis] + quarter)
+                    {
+                        lowMin = Vector2.Min(lowMin, across);
+                        lowMax = Vector2.Max(lowMax, across);
+                    }
+                    if (point[axis] >= max[axis] - quarter)
+                    {
+                        highMin = Vector2.Min(highMin, across);
+                        highMax = Vector2.Max(highMax, across);
+                    }
+                }
+                float lowWidth = Mathf.Max(lowMax.x - lowMin.x, lowMax.y - lowMin.y);
+                float highWidth = Mathf.Max(highMax.x - highMin.x, highMax.y - highMin.y);
+                if (highWidth > lowWidth * 1.2f)
+                {
+                    positive = true;
+                }
+                else if (lowWidth > highWidth * 1.2f)
+                {
+                    positive = false;
+                }
+            }
+
+            float scale = model.lossyScale.x;
+            tip = Vector3.zero;
+            tip[axis] = positive ? 1f : -1f;
+            towardsTip = (positive ? max[axis] : -min[axis]) * scale;
+            towardsButt = (positive ? -min[axis] : max[axis]) * scale;
+            return true;
+        }
+
+        private static bool IsAxeName(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return false;
+            }
+            return name.ToLowerInvariant().Contains("axe"); // also catches pickaxes
         }
 
         private void RestoreItemScale()

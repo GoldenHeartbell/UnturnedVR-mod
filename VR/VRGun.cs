@@ -219,8 +219,33 @@ namespace UnturnedVR.VR
             Vector3 toSight = point - barrel.position;
             toSight -= direction * Vector3.Dot(toSight, direction);
             up = toSight.sqrMagnitude > 0.000025f ? toSight.normalized : Vector3.up;
+
+            // The barrel-to-sight line is only "up" when the Barrel hook sits under the sight. On guns whose hook lies behind
+            // the origin and off to the side (the Carolus id 6253 and the Javelin id 6908) it pointed sideways and the scope view
+            // was rolled 45 / 90 deg. Then the up of the hand's aim frame is used (the gun is held upright in it).
+            Vector3 handUp = Vector3.ProjectOnPlane(VRArms.AimFrame * Vector3.up, direction);
+            if (handUp.sqrMagnitude > 0.0001f)
+            {
+                handUp.Normalize();
+                bool sideways = Vector3.Angle(up, handUp) > SightUpTolerance;
+                if (sideways)
+                {
+                    up = handUp;
+                }
+                if (model != sightUpLoggedModel)
+                {
+                    sightUpLoggedModel = model;
+                    if (sideways)
+                    {
+                        VRLog.Info("gun: \"" + model.name + "\" sight is not above the Barrel hook, the scope keeps the hand's up.");
+                    }
+                }
+            }
             return true;
         }
+
+        private const float SightUpTolerance = 30f; // degrees between the barrel-to-sight up and the hand's up before the hand's is used
+        private static Transform sightUpLoggedModel;
 
         /// <summary>
         /// The equipped gun's own frame in world space: forward along the barrel (the muzzle axis of its Barrel hook), up towards
@@ -392,6 +417,17 @@ namespace UnturnedVR.VR
             Vector3 axis = model.InverseTransformDirection(barrel.TransformDirection(localDirection)).normalized;
             Vector3 barrelInFrame = animationHold * axis;
             float angle = Vector3.Angle(barrelInFrame, Vector3.forward);
+            if (angle > 90f)
+            {
+                // The game never holds a gun backwards: the Barrel hook sits behind the model origin (the Carolus, id 6253, read
+                // 180 deg off and was turned to point backwards). The muzzle axis is the other way round; flipped once, after
+                // which the angle is small, so this does not toggle.
+                localDirection = -localDirection;
+                axis = -axis;
+                barrelInFrame = -barrelInFrame;
+                angle = 180f - angle;
+                VRLog.Info("gun: \"" + model.name + "\" id " + gun.id + " Barrel hook lies behind the origin, muzzle axis flipped to " + localDirection + ".");
+            }
             bool straighten = angle > StraightenThreshold;
             Quaternion correction = straighten ? Quaternion.FromToRotation(barrelInFrame, Vector3.forward) : Quaternion.identity;
             settledCorrections[key] = correction;
