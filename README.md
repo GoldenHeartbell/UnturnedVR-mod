@@ -2,7 +2,7 @@
 
 A free PC VR mod for Unturned.
 
-Play Unturned in your headset with tracked hands, guns you aim with your own arms, holsters on your body and your health on your wrist. The game runs on your PC through SteamVR and is drawn in 3D for each eye, so you stand inside the world instead of looking at a flat screen floating in front of you. Please note this is a fan-made mod for a game that was never built for VR.
+Play Unturned in your headset with tracked hands, guns you aim with your arms and holsters on your body. The game runs on your PC through SteamVR and is drawn in 3D for each eye, so you can really stand and feel the Unturned world around you. Please note this is a fan-made mod for a game that was never built for VR.
 
 **Status:** work in progress. Do not use it on BattlEye servers, launch the game without BattlEye.
 
@@ -22,27 +22,27 @@ This repository holds the source code of the module. The install zip is on the [
 
 ## The goal
 
-The goal of this mod is to transform Unturned into a real VR experience, not a flat game on a screen in front of your face. Everything you do with a mouse and keyboard should become something you do with your hands: raising the gun to your eye to aim down the sights, drawing from a holster on your shoulder, checking your health on your forearm.
+The goal of this mod is to transform Unturned into a real VR experience, not a flat game on a screen in front of your face. Everything you do with a mouse and keyboard should become something you do with your hands.
 
 Once the mod supports all of the game's standard features, I plan to turn some of its flat-screen actions, like reloading and melee attacks, into real VR movements.
 
 The mod runs on top of the normal Steam version of the game and only adds files: a module in `Modules/UnturnedVR/` plus the XR assets it needs. No game files are changed, so removing the mod gives you the normal game back.
 
 ## Current features
-- **See the world:** the world, menus and HUD in full 3D, head tracking (your body heading and aim pitch follow the headset, other players see it), water reflections, full-view screen effects (hit flashes, flashbangs, low health, night vision)
-- **Use your hands:** 6DoF arms and hands that follow your controllers, picking things up with the hand that points at them, the equipped item in your hand (pass it over or hold it with both), a laser pointer for menus, the inventory and the pause menu, and hand-placed building mode.
-- **Shoot and aim:** guns that fire from the barrel with two-handed aiming, aiming down the sights by raising the gun's sight to your eye, scopes with hand-shake smoothing, per-gun rumble, a laser dot that follows the gun, an attachment menu on the gun, bows you aim with the arrow and binoculars with map markers.
+- **See the world:** the world, menus and HUD in full 3D rendered per eye, head tracking (your body heading and aim pitch follow the headset, synced with other players), water reflections, full-view screen effects (hit flashes, flashbangs, low health, night vision)
+- **Use your hands:** 6DoF arms and hands that follow your controllers, picking things up with the hand that points at them, the equipped item in your hand (pass it over or hold it with both), a laser pointer for menus, the inventory and the pause menu all in full VR.
+- **Shoot and aim:** guns fire from the barrel with two-handed aiming possible, aiming down the sights by raising the gun's sight to your eye, scopes with hand-shake smoothing, per-gun rumble, a laser dot that follows the gun, an attachment menu on the gun.
 - **Gear on your body:** holsters for the hotbar, a night vision gesture at your ear, the tactical light and laser on the second trigger, hand-held flashlights you switch with the other hand, health, food, water and status icons on your left forearm, ammo and fire mode on the side of the gun, a vehicle dashboard, and group names and hit markers in the world.
 - **Get around:** walking and smooth turning on the thumbsticks, crouch and prone, helicopters, planes and blimps flown with the thumbsticks, vehicle lock and siren, NPC dialogue with a button, the SteamVR keyboard for text fields and a VR settings page in the pause menu.
-- **Servers (experimental):** an optional server part that fixes some server-side tracking and lets other VR players see your hands and arms move. Players without the mod can still join, they just do not get the VR effects.
+- **Servers (experimental):** an optional server part to sync VR tracking and hand movement across players. Players without the mod can still join, they just do not get the VR effects.
 
 ### VR settings page
 
-The pause menu has its own **VR** page, built from the game's own widgets so it looks like the rest of the menu and can be used with the laser pointer.
+The pause menu has its own **VR** page, built from the game's own widgets so it looks and feels like the rest of the menu and can be used with the laser pointer.
 
 - **Holsters:** show or hide the holster, shoulder and ear zones as rings around your body.
 - **Controls:** attachment menu on Hold or Toggle, building aim by head or by hand, and the speed at which you rotate a barricade before placing it.
-- **Effects:** reversing up/down for hallucinations, whether the menu camera follows the main menu fly-in or holds still, the water reflection step (Off, Low, Medium, High or Ultra, a cap on the game's own reflection quality, never a raise) and a checkbox for sky and clouds in those reflections.
+- **Effects:** reversing up/down for hallucinations can be toggled, whether the menu camera follows the main menu fly-in or holds still, the water reflection step (Off, Low, Medium, High or Ultra, a vr implementation of the game's own reflection quality) and a toogle for sky and clouds in those reflections.
 - **HUD:** choose for the status icons, the compass, the vehicle display and the gun's ammo and fire mode whether they sit on your wrist, the dashboard or the gun, or stay on the flat HUD panel.
 
 Play the way you like: keep everything on your body for full immersion, put the HUD back on a flat panel, or mix the two.
