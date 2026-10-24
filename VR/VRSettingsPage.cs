@@ -18,6 +18,7 @@ namespace UnturnedVR.VR
         private ISleekToggle markersToggle;
         private SleekButtonState attachModeButton;
         private SleekButtonState buildAimButton;
+        private SleekButtonState turretTurnButton;
         private SleekButtonState wristStatusButton;
         private SleekButtonState compassButton;
         private SleekButtonState vehicleDashButton;
@@ -116,6 +117,19 @@ namespace UnturnedVR.VR
             buildAimButton.state = VRSettings.BuildingHandBased ? 1 : 0;
             buildAimButton.onSwappedState = OnBuildAimSwapped;
             box.AddChild(buildAimButton);
+            verticalOffset += 40;
+
+            // Vehicle turrets: what turns the turret left / right. Head and right stick is what it always was and the default;
+            // states: 0 = Head + controller, 1 = Controller only. Up / down follows the head in both.
+            turretTurnButton = new SleekButtonState(new GUIContent("Head + controller"), new GUIContent("Controller only"));
+            turretTurnButton.PositionOffset_Y = verticalOffset;
+            turretTurnButton.SizeOffset_X = 200;
+            turretTurnButton.SizeOffset_Y = 30;
+            turretTurnButton.AddLabel("Turret turning", ESleekSide.RIGHT);
+            turretTurnButton.tooltip = "Vehicle turrets (the tank's gun...). Head + controller: the turret turns left and right where you look, and with the right stick. Controller only: only the right stick turns it left and right, so you can look around freely. Up and down follows your head in both.";
+            turretTurnButton.state = VRSettings.TurretControllerOnly ? 1 : 0;
+            turretTurnButton.onSwappedState = OnTurretTurnSwapped;
+            box.AddChild(turretTurnButton);
             verticalOffset += 40;
 
             // How fast the right stick turns a barricade that is being placed. The slider is 0..1; its left end is the
@@ -233,7 +247,7 @@ namespace UnturnedVR.VR
             vehicleDashButton.SizeOffset_X = 200;
             vehicleDashButton.SizeOffset_Y = 30;
             vehicleDashButton.AddLabel("Vehicle display", ESleekSide.RIGHT);
-            vehicleDashButton.tooltip = "Dashboard: fuel, speed and vehicle health sit in the vehicle to the right of the steering wheel, fixed in place. HUD panel: they stay on the flat HUD.";
+            vehicleDashButton.tooltip = "Dashboard: fuel, speed and vehicle health sit in the vehicle to the right of the steering wheel, fixed in place; in a turret seat the turret ammo sits below the view and turns with the turret. HUD panel: they stay on the flat HUD.";
             vehicleDashButton.state = VRSettings.VehicleDash ? 0 : 1;
             vehicleDashButton.onSwappedState = OnVehicleDashSwapped;
             box.AddChild(vehicleDashButton);
@@ -278,6 +292,7 @@ namespace UnturnedVR.VR
             markersToggle.Value = VRHolsters.MarkersEnabled;
             attachModeButton.state = AttachModeState(VRSettings.AttachMenuHold);
             buildAimButton.state = VRSettings.BuildingHandBased ? 1 : 0;
+            turretTurnButton.state = VRSettings.TurretControllerOnly ? 1 : 0;
             wristStatusButton.state = VRSettings.WristStatus ? 0 : 1;
             compassButton.state = VRSettings.WristCompass ? 0 : 1;
             vehicleDashButton.state = VRSettings.VehicleDash ? 0 : 1;
@@ -321,6 +336,13 @@ namespace UnturnedVR.VR
             bool hand = index == 1;
             VRSettings.SetBuildingHandBased(hand);
             VRLog.Info("settings page: building aim " + (hand ? "hand based" : "head based") + ".");
+        }
+
+        private void OnTurretTurnSwapped(SleekButtonState button, int index)
+        {
+            bool controllerOnly = index == 1;
+            VRSettings.SetTurretControllerOnly(controllerOnly);
+            VRLog.Info("settings page: turret turning " + (controllerOnly ? "controller only" : "head and controller") + ".");
         }
 
         private void OnPitchFlipSwapped(SleekButtonState button, int index)

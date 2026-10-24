@@ -70,23 +70,32 @@ namespace UnturnedVR.VR
         }
 #endif
 
-        private static bool loggedComponents;
+        private static Camera loggedComponentsFor;
 
-        /// <summary>One-time log of what MainCamera carries, to see which effects the VR camera lacks.</summary>
-        public static void LogCameraComponents(Camera camera)
+        /// <summary>
+        /// Logs, once per MainCamera (menu, then the player's), what it carries and which of those component types the VR
+        /// camera does not have, to see which effects the VR camera lacks.
+        /// </summary>
+        public static void LogCameraComponents(Camera camera, Camera vrCamera)
         {
-            if (loggedComponents || camera == null)
+            if (camera == null || camera == loggedComponentsFor)
             {
                 return;
             }
-            loggedComponents = true;
+            loggedComponentsFor = camera;
 
             var sb = new System.Text.StringBuilder("MainCamera components:");
+            var missing = new System.Text.StringBuilder();
             foreach (Component component in camera.GetComponents<Component>())
             {
                 sb.Append(' ').Append(component == null ? "<missing>" : component.GetType().Name);
+                if (component != null && vrCamera != null && vrCamera.GetComponent(component.GetType()) == null)
+                {
+                    missing.Append(' ').Append(component.GetType().Name);
+                }
             }
             VRLog.Info(sb.ToString());
+            VRLog.Info("not on the VR camera:" + (missing.Length > 0 ? missing.ToString() : " (none)"));
         }
     }
 }

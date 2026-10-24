@@ -5,7 +5,7 @@ using UnityEngine;
 namespace UnturnedVR.VR
 {
     /// <summary>
-    /// The beam of a switched-on hand-held flashlight comes from the flashlight instead of from the eyes.
+    /// The beam of a switched-on hand-held flashlight, or of a gun's tactical light, comes from that light instead of from the eyes.
     /// The game lights the world with one spot light on the player (Player.firstSpot, a child of the game camera, so in VR
     /// at the head); the item only shows a small viewmodel light. While a flashlight (a melee item with a light) is held and
     /// switched on, that spot light is moved to the item's light (the "Light" child of the light hook the game switches on and
@@ -13,7 +13,10 @@ namespace UnturnedVR.VR
     /// range, angle, colour, the perspective. When the light goes off, the item is put away or the view is not first person,
     /// the spot light gets its own pose back.
     /// The head-mounted light (glasses with a lamp) shares that one spot light and belongs on the head: while it is on, the
-    /// spot light is left alone, so it never moves to the hand. Gun tactical lights are not changed.
+    /// spot light is left alone, so it never moves to the hand.
+    /// A gun's tactical light uses the same spot light (UseableGun calls Player.enableItemSpotLight while it is on): it is moved to
+    /// the light hook of the first-person gun model (Attachments.lightHook, active while the light is switched on) and points along
+    /// the barrel (VRGun.TryGetGunFrame), so it follows the gun in the hand.
     /// Called from VRArms.Apply right after the item is placed (LateUpdate and before-render).
     /// Cost: a few cached reflection reads and one transform write per call; nothing without a flashlight.
     /// </summary>
@@ -24,6 +27,7 @@ namespace UnturnedVR.VR
         private static readonly FieldInfo spotField = typeof(Player).GetField("firstSpot", AnyInstance);
         private static readonly FieldInfo headlampField = typeof(Player).GetField("headlampOn", AnyInstance);
         private static readonly FieldInfo meleeHookField = typeof(UseableMelee).GetField("firstLightHook", AnyInstance);
+        private static readonly FieldInfo gunAttachmentsField = typeof(UseableGun).GetField("firstAttachments", AnyInstance);
 
         private static Transform spot;
         private static Vector3 restPosition;
@@ -31,11 +35,14 @@ namespace UnturnedVR.VR
         private static bool moved;
         private static bool loggedMissing;
         private static bool loggedTakeover;
+        private static bool loggedGunTakeover;
+        private static bool loggedGunMissing;
 
         public static void Update(Quaternion? aimFrame)
         {
             Player player = Player.LocalPlayer;
-            Transform beam = VRState.IsActive && player != null ? FindBeam(player) : null;
+            bool onGun = false;
+            Transform beam = VRState.IsActive && player != null ? FindBeam(player, out onGun) : null;
             Transform spotTransform = beam != null ? FindSpot(player) : null;
             if (beam == null || spotTransform == null)
             {
@@ -57,12 +64,27 @@ namespace UnturnedVR.VR
 
             // The light object's own axes are the model's (its forward came out of the flashlight's side), so the beam goes
             // along the hand frame's forward, the direction the game itself aims; the model's light only gives the position.
-            spot.SetPositionAndRotation(beam.position, aimFrame ?? beam.rotation);
-
-            if (!loggedTakeover)
+            // A gun's light shines along the barrel, whatever hold rotation the animation gave the model.
+            Quaternion rotation = aimFrame ?? beam.rotation;
+            if (onGun && VRGun.TryGetGunFrame(player, rotation, out Quaternion gunFrame))
             {
-                loggedTakeover = true;
-                VRLog.Info("flashlight: the player spot light now sits at the light of the held flashlight and points where it points.");
+                rotation = gunFrame;
+            }
+            spot.SetPositionAndRotation(beam.position, rotation);
+
+            if (onGun ? !loggedGunTakeover : !loggedTakeover)
+            {
+                if (onGun)
+                {
+                    loggedGunTakeover = true;
+                }
+                else
+                {
+                    loggedTakeover = true;
+                }
+                VRLog.Info(onGun
+                    ? "flashlight: the player spot light now sits at the tactical light of the held gun and points along the barrel."
+                    : "flashlight: the player spot light now sits at the light of the held flashlight and points where it points.");
             }
         }
 
@@ -80,17 +102,12 @@ namespace UnturnedVR.VR
             return spotField.GetValue(player) as Transform;
         }
 
-        // The light of the held flashlight, when it is switched on and the view is first person: the "Light" child of the hook
-        // (that child is the actual light, so its forward is the way the beam goes), or the hook itself without such a child.
-        private static Transform FindBeam(Player player)
+        // The light of the held flashlight or of the held gun's tactical light, when it is switched on and the view is first
+        // person: the "Light" child of the hook (that child is the actual light), or the hook itself without such a child.
+        private static Transform FindBeam(Player player, out bool onGun)
         {
+            onGun = false;
             if (player.look == null || player.look.perspective != EPlayerPerspective.FIRST || player.look.IsLocallyUsingFreecam)
-            {
-                return null;
-            }
-
-            PlayerEquipment equipment = player.equipment;
-            if (equipment == null || !(equipment.useable is UseableMelee melee) || !(equipment.asset is ItemMeleeAsset asset) || !asset.isLight)
             {
                 return null;
             }
@@ -101,7 +118,48 @@ namespace UnturnedVR.VR
                 return null;
             }
 
+            PlayerEquipment equipment = player.equipment;
+            if (equipment != null && equipment.useable is UseableGun gun)
+            {
+                onGun = true;
+                return FindGunLight(gun);
+            }
+
+            if (equipment == null || !(equipment.useable is UseableMelee melee) || !(equipment.asset is ItemMeleeAsset asset) || !asset.isLight)
+            {
+                return null;
+            }
+
             Transform hook = meleeHookField != null ? meleeHookField.GetValue(melee) as Transform : null;
+            if (hook == null || !hook.gameObject.activeInHierarchy)
+            {
+                return null; // switched off: the game hides the hook
+            }
+
+            Transform light = hook.Find("Light");
+            return light != null ? light : hook;
+        }
+
+        // The tactical light of the first-person gun model. The game switches its hook on for a laser too, so only a light counts.
+        private static Transform FindGunLight(UseableGun gun)
+        {
+            if (gunAttachmentsField == null)
+            {
+                if (!loggedGunMissing)
+                {
+                    loggedGunMissing = true;
+                    VRLog.Warn("flashlight: UseableGun.firstAttachments not found, a gun's light stays at the head.");
+                }
+                return null;
+            }
+
+            Attachments attachments = gunAttachmentsField.GetValue(gun) as Attachments;
+            if (attachments == null || attachments.tacticalAsset == null || !attachments.tacticalAsset.isLight)
+            {
+                return null;
+            }
+
+            Transform hook = attachments.lightHook;
             if (hook == null || !hook.gameObject.activeInHierarchy)
             {
                 return null; // switched off: the game hides the hook

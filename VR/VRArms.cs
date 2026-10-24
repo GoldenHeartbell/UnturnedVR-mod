@@ -70,6 +70,13 @@ namespace UnturnedVR.VR
         /// <summary>The equipped gun's aim frame this frame (the controller turned by the gun's class pose): forward along the barrel, up as held.</summary>
         public static Quaternion AimFrame { get; private set; } = Quaternion.identity;
 
+        /// <summary>
+        /// Where the equipped item's model was put this frame (its origin, world space), for other players (VRNetPoseSender): their game
+        /// puts its third-person model of the same item, which comes from the same prefab, on this pose. Only set while <see cref="ItemHand"/> is.
+        /// </summary>
+        public static Vector3 ItemPosition { get; private set; }
+        public static Quaternion ItemRotation { get; private set; } = Quaternion.identity;
+
         private PlayerAnimator animator;
         private Transform root;
         private Transform viewmodel;
@@ -712,6 +719,9 @@ namespace UnturnedVR.VR
                     lastModel.SetPositionAndRotation(position, rotation);
                 }
             }
+
+            ItemPosition = position;
+            ItemRotation = rotation;
 
             if (itemIsGun)
             {

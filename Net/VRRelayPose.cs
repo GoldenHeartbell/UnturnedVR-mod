@@ -10,7 +10,7 @@ namespace UnturnedVR.Net
     /// sender steps away from the middle of the play space. The receiver hangs the hands on the neck of the avatar it draws
     /// (<see cref="ToWorld"/>), so the arms stay on the body wherever the sender stands. Only the head itself is relative to the body.
     /// Cosmetic only: nothing in the game decides anything from this. The write and read code is here, in the assembly both sides
-    /// load. The size is bounded: 14 + 4 x (36 + 27) bits, at most about 34 bytes.
+    /// load. The size is bounded: 14 + 5 x (36 + 27) bits, at most about 42 bytes.
     /// </summary>
     internal struct VRRelayPose
     {
@@ -33,7 +33,7 @@ namespace UnturnedVR.Net
         public bool TwoHanded;
 
         // The sender's frame: rotations are relative to Euler(0, yaw, 0). The head position is relative to the player's position; the
-        // hand and muzzle positions are relative to the head position, and the muzzle direction is only turned by the yaw.
+        // hand, muzzle and item positions are relative to the head position, and the muzzle direction is only turned by the yaw.
         public Vector3 HeadPosition;
         public Quaternion HeadRotation;
         public Vector3 LeftPosition;
@@ -42,6 +42,8 @@ namespace UnturnedVR.Net
         public Quaternion RightRotation;
         public Vector3 MuzzlePosition;
         public Vector3 MuzzleDirection;
+        public Vector3 ItemPosition;
+        public Quaternion ItemRotation;
 
         /// <summary>Server side: a validated world pose into the sender's frame. <paramref name="bodyYaw"/> is the server's look yaw of the player, in degrees.</summary>
         public static VRRelayPose FromWorld(byte channelId, in VRPoseData pose, Vector3 bodyPosition, float bodyYaw)
@@ -73,6 +75,11 @@ namespace UnturnedVR.Net
                 relay.MuzzlePosition = inverse * (pose.MuzzlePosition - pose.HeadPosition);
                 relay.MuzzleDirection = inverse * pose.MuzzleDirection;
             }
+            if (pose.ItemHand != VRPoseData.ItemHandNone)
+            {
+                relay.ItemPosition = inverse * (pose.ItemPosition - pose.HeadPosition);
+                relay.ItemRotation = inverse * pose.ItemRotation;
+            }
             return relay;
         }
 
@@ -94,6 +101,8 @@ namespace UnturnedVR.Net
             world.RightRotation = yaw * RightRotation;
             world.MuzzlePosition = eyePosition + yaw * MuzzlePosition;
             world.MuzzleDirection = yaw * MuzzleDirection;
+            world.ItemPosition = eyePosition + yaw * ItemPosition;
+            world.ItemRotation = yaw * ItemRotation;
             return world;
         }
 
@@ -120,6 +129,11 @@ namespace UnturnedVR.Net
             {
                 result.MuzzlePosition = Vector3.Lerp(a.MuzzlePosition, b.MuzzlePosition, t);
                 result.MuzzleDirection = Vector3.Slerp(a.MuzzleDirection, b.MuzzleDirection, t);
+            }
+            if (a.ItemHand != VRPoseData.ItemHandNone && a.ItemHand == b.ItemHand)
+            {
+                result.ItemPosition = Vector3.Lerp(a.ItemPosition, b.ItemPosition, t);
+                result.ItemRotation = Quaternion.Slerp(a.ItemRotation, b.ItemRotation, t);
             }
             return result;
         }
@@ -149,6 +163,11 @@ namespace UnturnedVR.Net
             {
                 writer.WriteClampedVector3(MuzzlePosition, IntBits, FracBits);
                 writer.WriteNormalVector3(MuzzleDirection);
+            }
+            if (ItemHand != VRPoseData.ItemHandNone)
+            {
+                writer.WriteClampedVector3(ItemPosition, IntBits, FracBits);
+                writer.WriteQuaternion(ItemRotation);
             }
         }
 
@@ -185,6 +204,10 @@ namespace UnturnedVR.Net
                 return false;
             }
             if (pose.HasMuzzle && (!reader.ReadClampedVector3(out pose.MuzzlePosition, IntBits, FracBits) || !reader.ReadNormalVector3(out pose.MuzzleDirection)))
+            {
+                return false;
+            }
+            if (pose.ItemHand != VRPoseData.ItemHandNone && (!reader.ReadClampedVector3(out pose.ItemPosition, IntBits, FracBits) || !reader.ReadQuaternion(out pose.ItemRotation)))
             {
                 return false;
             }

@@ -39,6 +39,12 @@ namespace UnturnedVR.VR
                 return false;
             }
 
+            if (player.equipment != null && player.equipment.isTurret)
+            {
+                MuzzleFailure = "vehicle turret (fires from its own aim)";
+                return false;
+            }
+
             Transform model = player.equipment != null ? player.equipment.firstModel : null;
             if (model == null)
             {
@@ -76,7 +82,7 @@ namespace UnturnedVR.VR
         // binoculars). Both the scope picture (VRAds.PlaceScopeCamera) and the shot direction (TryGetMuzzle) use the calmed
         // direction, so they agree; the gun model and the sight itself stay 1:1 with the hand. Off while hip firing.
         // "smooth gun <minCutoff Hz> [beta]" in gun-offsets.txt tunes it, a minCutoff of 0 switches it off; read when aiming starts.
-        private const float DefaultAimMinCutoff = 3f; // Hz (shooting wants less lag than the binoculars; holding breath calms it)
+        private const float DefaultAimMinCutoff = 2f; // Hz (shooting wants less lag than the binoculars; holding breath calms it further)
         private const float DefaultAimBeta = 0.1f;
         // Hold breath (the game's steady aim, left stick click = sprint key): the cut-off is scaled down to this fraction at the
         // full hold. The game's own sway is not used in VR (the shot comes from the muzzle), so this is where it counts.

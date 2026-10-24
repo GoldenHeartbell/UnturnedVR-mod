@@ -100,7 +100,27 @@ namespace UnturnedVR.VR
                 return;
             }
 
+            // A turret seat with its own aim camera (the tank's gunner): the game puts MainCamera on the seat's turretAim, the
+            // gunner sight, which can be far from the seat (inside the hull). The head goes there too.
+            Transform turretAim = AimCameraOfSeat();
+            if (turretAim != null && transform.parent != null)
+            {
+                transform.position = turretAim.position - transform.parent.up * calibrationHeadY;
+                return;
+            }
+
             transform.localPosition = new Vector3(0f, standingEyeHeight - calibrationHeadY, 0f);
+        }
+
+        private static Transform AimCameraOfSeat()
+        {
+            Player player = Player.LocalPlayer;
+            Passenger seat = player != null && player.movement != null ? player.movement.getVehicleSeat() : null;
+            if (seat == null || seat.turret == null || !seat.turret.useAimCamera || player.look.perspective != EPlayerPerspective.FIRST)
+            {
+                return null;
+            }
+            return seat.turretAim;
         }
 
         // Adopts the menu camera's position and yaw only after it has been (nearly) still for a moment.

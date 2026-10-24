@@ -17,6 +17,10 @@ namespace UnturnedVR.VR
         private const string AttachMenuHoldKey = "UnturnedVR.controls.attachMenuHold";
         private const string BuildingHandKey = "UnturnedVR.controls.buildingHand";
 
+        private const string TurretControllerOnlyKey = "UnturnedVR.controls.turretControllerOnly";
+        private static bool turretControllerOnlyLoaded;
+        private static bool turretControllerOnlyValue;
+
         private const string BuildingRotateSpeedKey = "UnturnedVR.controls.buildingRotateSpeed";
 
         private const string HallucinationPitchFlipKey = "UnturnedVR.comfort.hallucinationPitchFlip";
@@ -128,6 +132,30 @@ namespace UnturnedVR.VR
             buildHandLoaded = true;
             buildHandValue = hand;
             ConvenientSavedata.get().write(BuildingHandKey, hand);
+        }
+
+        /// <summary>
+        /// Vehicle turrets (the tank's gunner seat...): false (the default) = the turret turns left / right with the head and
+        /// the right stick, true = only the right stick turns it left / right. Up / down follows the head either way.
+        /// </summary>
+        public static bool TurretControllerOnly
+        {
+            get
+            {
+                if (!turretControllerOnlyLoaded)
+                {
+                    turretControllerOnlyLoaded = true;
+                    ConvenientSavedata.get().read(TurretControllerOnlyKey, out turretControllerOnlyValue); // missing = false
+                }
+                return turretControllerOnlyValue;
+            }
+        }
+
+        public static void SetTurretControllerOnly(bool controllerOnly)
+        {
+            turretControllerOnlyLoaded = true;
+            turretControllerOnlyValue = controllerOnly;
+            ConvenientSavedata.get().write(TurretControllerOnlyKey, controllerOnly);
         }
 
         /// <summary>
@@ -354,7 +382,7 @@ namespace UnturnedVR.VR
 
         /// <summary>
         /// The vehicle box (fuel, speed, health...): true (the default) = a dashboard in the vehicle to the right of the
-        /// wheel (VRWristStatus), false = it stays on the flat HUD panel.
+        /// wheel (VRWristStatus), and in a turret seat the turret gun's ammo box on the turret; false = they stay on the flat HUD panel.
         /// </summary>
         public static bool VehicleDash
         {

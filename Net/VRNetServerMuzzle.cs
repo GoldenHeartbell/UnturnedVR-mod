@@ -86,6 +86,11 @@ namespace UnturnedVR.Net
                 aim = null;
                 return LauncherMuzzleResult.NotApplicable; // not a launcher
             }
+            if (player.equipment.isTurret)
+            {
+                aim = null;
+                return LauncherMuzzleResult.NotApplicable; // a vehicle turret fires from the seat's own aim (turretAim), not a hand
+            }
 
             // Taking the shot pose uses it up, so each shot gets its own; it is taken even if the checks below then refuse it.
             ulong id = gun.channel.owner.playerID.steamID.m_SteamID;

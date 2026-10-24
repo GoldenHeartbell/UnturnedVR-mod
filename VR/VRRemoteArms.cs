@@ -14,8 +14,9 @@ namespace UnturnedVR.VR
     /// whose LateUpdate bakes the head pitch into the spine and skull. This component runs after that (execution order 500), puts
     /// the bones on the rest pose captured when the rig was created (the same T-pose capture VRArms does for the first-person rig) and
     /// uses the same two-bone IK (<see cref="VRArmIK"/>), at the rig's own scale. When there is no fresh pose, or the player sits, drives,
-    /// is dead or is left-handed (the rig is mirrored), it does nothing and the game's animation shows. The held item is not placed here
-    /// (it hangs on the hook and follows the arm).
+    /// is dead or is left-handed (the rig is mirrored), it does nothing and the game's animation shows. Milestone 3: the held item is put
+    /// on the pose the sender's game gave it (in the left or right hand, aimed and held as the sender holds it), with the other hand on
+    /// the grip of a two-handed gun; without a relayed item pose it stays where the game hangs it.
     /// Cost: a handful of transform writes per VR player in view per frame, no allocations.
     /// </summary>
     [DefaultExecutionOrder(500)] // after the Animation component and HumanAnimator.LateUpdate
@@ -60,6 +61,27 @@ namespace UnturnedVR.VR
         private const float TogetherFar = 0.4f;
         private const float TogetherOutward = 0.5f;
 
+        /// <summary>
+        /// The avatar's shoulders are much wider than a person's, so hands held straight out at a real shoulder width made the arms point
+        /// inwards. A hand reaching forward is moved outwards by up to <see cref="ReachSpread"/> (m): none within <see cref="ReachNear"/>
+        /// in front of the neck pivot, all of it from <see cref="ReachFar"/>. Faded out with the hands together (a two-handed hold, see
+        /// <see cref="TogetherNear"/>), so they still meet.
+        /// </summary>
+        private const float ReachSpread = 0.08f;
+        private const float ReachNear = 0.15f;
+        private const float ReachFar = 0.5f;
+
+        /// <summary>
+        /// The avatar's arm is longer than the distance a person's hand gets from the avatar's (wide) shoulder, so a fully stretched arm
+        /// still bent at the elbow. When the sender's hand is far from their own eye (an arm being stretched: <see cref="StraightFrom"/>
+        /// to <see cref="StraightAt"/> m), the hand is moved out along the line from the avatar's shoulder until that arm is straight.
+        /// </summary>
+        private const float StraightFrom = 0.45f;
+        private const float StraightAt = 0.62f;
+
+        /// <summary>The held item is drawn this far (m) outwards from the body's middle, on the side of the hand holding it: on the wide avatar it sat inside the hand, towards the middle.</summary>
+        private const float ItemOutward = 0.075f;
+
         private Player player;
         private Transform frame;      // the rig's upright frame ("Third")
         private Transform skeleton;
@@ -77,6 +99,17 @@ namespace UnturnedVR.VR
         private Vector3 leftPush;     // what the torso box moved the left / right hand by, eased
         private Vector3 rightPush;
         private bool pushesValid;
+        private bool shouldersKnown;        // the rig shoulders below, in skull space, measured after last frame's IK
+        private Vector3 leftShoulderLocal;  // the arm driven by the sender's left hand
+        private Vector3 rightShoulderLocal;
+        private Transform itemModel;  // this player's third-person item model as last seen
+        private Vector3 itemRestPosition; // its local pose as the game set it, put back when the relayed pose stops
+        private Quaternion itemRestRotation;
+        private bool itemDriven;
+        private Transform itemLoggedFor;
+        private bool supportReady;
+        private bool hasSupport;
+        private Vector3 itemSupportLocal;
 
         public static void Attach(PlayerAnimator animator)
         {
@@ -103,7 +136,7 @@ namespace UnturnedVR.VR
 
         private void LateUpdate()
         {
-            if (unusable || !resolved || !VRState.IsActive || player == null)
+            if (unusable || !resolved || !VRState.ShowsRemoteArms || player == null)
             {
                 return;
             }
@@ -152,8 +185,12 @@ namespace UnturnedVR.VR
             // The avatar is wider than a person: the hands are kept out of its torso (only this player's view of the OTHER player; the
             // local player's own arms are driven by VRArms and are not limited).
             Vector3 center = skull.position;
-            Vector3 wantedLeftPush = TorsoPush(pose.LeftPosition, center, yaw, -1f);
-            Vector3 wantedRightPush = TorsoPush(pose.RightPosition, center, yaw, 1f);
+            Vector3 wantedLeftPush = TorsoPush(pose.LeftPosition, center, yaw, -1f) + ReachPush(pose.LeftPosition, center, yaw, -1f, together);
+            Vector3 wantedRightPush = TorsoPush(pose.RightPosition, center, yaw, 1f) + ReachPush(pose.RightPosition, center, yaw, 1f, together);
+            Arm leftArm = swapped ? right : left;
+            Arm rightArm = swapped ? left : right;
+            wantedLeftPush += StraightenPush(leftArm, leftShoulderLocal, pose.LeftPosition + wantedLeftPush, pose.LeftPosition, eye, scale);
+            wantedRightPush += StraightenPush(rightArm, rightShoulderLocal, pose.RightPosition + wantedRightPush, pose.RightPosition, eye, scale);
             if (!pushesValid)
             {
                 leftPush = wantedLeftPush;
@@ -170,12 +207,107 @@ namespace UnturnedVR.VR
             // swapped: the rig's "Left" arm is on the viewer's right.
             if (pose.LeftTracked)
             {
-                VRArmIK.DriveTo(swapped ? right : left, pose.LeftPosition + leftPush, leftForward, yaw, swapped ? 1f : -1f, scale, 0f);
+                VRArmIK.DriveTo(leftArm, pose.LeftPosition + leftPush, leftForward, yaw, swapped ? 1f : -1f, scale, 0f);
             }
             if (pose.RightTracked)
             {
-                VRArmIK.DriveTo(swapped ? left : right, pose.RightPosition + rightPush, rightForward, yaw, swapped ? -1f : 1f, scale, 0f);
+                VRArmIK.DriveTo(rightArm, pose.RightPosition + rightPush, rightForward, yaw, swapped ? -1f : 1f, scale, 0f);
             }
+            // DriveTo puts the shoulders at their rest place; kept for next frame's StraightenPush.
+            leftShoulderLocal = skull.InverseTransformPoint(leftArm.Upper.position);
+            rightShoulderLocal = skull.InverseTransformPoint(rightArm.Upper.position);
+            shouldersKnown = true;
+
+            PlaceItem(pose, yaw, leftForward, rightForward, scale);
+        }
+
+        // The held item on the pose the sender's own game gave its first-person model (same prefab, so the same origin): in the hand, with
+        // the hold, the two-handed aim and the handle slide already in it. Moved with the item hand's torso push, so it stays in that hand,
+        // and <see cref="ItemOutward"/> to the outside.
+        // A two-handed gun gets the other hand on its grip point, like VRArms does for the local player. Last, because the model hangs on
+        // a hook of one of the arms: moving an arm moves it.
+        private void PlaceItem(in VRRelayPose pose, Quaternion yaw, Vector3 leftForward, Vector3 rightForward, float scale)
+        {
+            Transform model = player.equipment != null ? player.equipment.thirdModel : null;
+            if (model != itemModel)
+            {
+                RestoreItem();
+                itemModel = model;
+                itemLoggedFor = null;
+                supportReady = false;
+                if (model != null)
+                {
+                    itemRestPosition = model.localPosition;
+                    itemRestRotation = model.localRotation;
+                }
+            }
+            if (model == null || pose.ItemHand == VRPoseData.ItemHandNone)
+            {
+                RestoreItem();
+                return;
+            }
+
+            bool inLeft = pose.ItemHand == VRPoseData.ItemHandLeft;
+            Vector3 position = pose.ItemPosition + (inLeft ? leftPush : rightPush);
+            position += yaw * Vector3.right * (inLeft ? -ItemOutward : ItemOutward);
+            Quaternion rotation = pose.ItemRotation;
+            model.SetPositionAndRotation(position, rotation);
+            itemDriven = true;
+
+            bool supported = false;
+            if (pose.TwoHanded && (inLeft ? pose.RightTracked : pose.LeftTracked) && TryGetSupportLocal(model, out Vector3 supportLocal))
+            {
+                // The off hand: the sender's other hand, on the rig arm that lies on that side.
+                bool offIsLeft = !inLeft;
+                Arm offArm = offIsLeft ? (swapped ? right : left) : (swapped ? left : right);
+                VRArmIK.DriveTo(offArm, model.TransformPoint(supportLocal), offIsLeft ? leftForward : rightForward, yaw, offIsLeft ? -1f : 1f, scale, 0f);
+                model.SetPositionAndRotation(position, rotation);
+                supported = true;
+            }
+
+            if (itemLoggedFor != model)
+            {
+                itemLoggedFor = model;
+                VRLog.Info("remote arms: player channel " + channelId + " holds \"" + model.name + "\" in the " + (inLeft ? "left" : "right") + " hand"
+                    + (pose.TwoHanded ? (supported ? ", two-handed (other hand on the grip point)" : ", two-handed (no grip point, other hand on its controller)") : "") + ".");
+            }
+        }
+
+        // Where the second hand holds this player's gun, in the model's space: the Grip hook, else part of the way to the Barrel hook (the
+        // same point VRArms uses for the local player). Worked out once per model.
+        private bool TryGetSupportLocal(Transform model, out Vector3 supportLocal)
+        {
+            if (!supportReady)
+            {
+                supportReady = true;
+                hasSupport = false;
+                Attachments attachments = model.GetComponent<Attachments>();
+                if (player.equipment.asset is ItemGunAsset gun && attachments != null)
+                {
+                    if (attachments.gripHook != null)
+                    {
+                        itemSupportLocal = attachments.gripHook.localPosition;
+                        hasSupport = true;
+                    }
+                    else if (attachments.barrelHook != null)
+                    {
+                        itemSupportLocal = attachments.barrelHook.localPosition * VRGunTuning.Get(gun, out _).SupportFraction;
+                        hasSupport = true;
+                    }
+                }
+            }
+            supportLocal = itemSupportLocal;
+            return hasSupport;
+        }
+
+        // The item back where the game hangs it (on the hook or the spine), for the game's own animation to show.
+        private void RestoreItem()
+        {
+            if (itemDriven && itemModel != null)
+            {
+                itemModel.SetLocalPositionAndRotation(itemRestPosition, itemRestRotation);
+            }
+            itemDriven = false;
         }
 
         // The "forearm direction" handed to the IK for one hand: the opposite of where the elbow should be (outwards, down and back).
@@ -213,6 +345,39 @@ namespace UnturnedVR.VR
             return push * weight;
         }
 
+        // Along the arm, so a stretched arm is drawn straight (see StraightFrom). target: the hand with its other pushes; realHand: the
+        // relayed hand, judged against the sender's eye.
+        private Vector3 StraightenPush(in Arm arm, Vector3 shoulderLocal, Vector3 target, Vector3 realHand, Vector3 eye, float scale)
+        {
+            if (!shouldersKnown)
+            {
+                return Vector3.zero;
+            }
+            float stretch = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(StraightFrom, StraightAt, Vector3.Distance(realHand, eye)));
+            if (stretch <= 0f)
+            {
+                return Vector3.zero;
+            }
+
+            Vector3 shoulder = skull.TransformPoint(shoulderLocal);
+            float length = (arm.LowerRestPosition.magnitude + arm.HookRestPosition.magnitude) * scale - 0.01f; // DriveTo's reach, elbow stretch 0
+            Vector3 toTarget = target - shoulder;
+            float distance = toTarget.magnitude;
+            if (distance < 0.0001f || distance >= length)
+            {
+                return Vector3.zero;
+            }
+            return toTarget * ((length - distance) * stretch / distance);
+        }
+
+        // Outwards for a hand reaching forward (see ReachSpread). side: -1 = the left hand, +1 = the right.
+        private static Vector3 ReachPush(Vector3 hand, Vector3 center, Quaternion yaw, float side, float together)
+        {
+            float along = Vector3.Dot(hand - center, yaw * Vector3.forward);
+            float weight = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(ReachNear, ReachFar, along)) * (1f - together);
+            return yaw * Vector3.right * (side * ReachSpread * weight);
+        }
+
         private bool CanDrive(out string skip)
         {
             skip = null;
@@ -243,6 +408,8 @@ namespace UnturnedVR.VR
                 driving = false;
             }
             pushesValid = false;
+            shouldersKnown = false;
+            RestoreItem();
             if (reason != lastSkip)
             {
                 lastSkip = reason;

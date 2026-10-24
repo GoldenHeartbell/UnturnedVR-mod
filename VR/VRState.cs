@@ -1,3 +1,5 @@
+using SDG.Unturned;
+
 namespace UnturnedVR.VR
 {
     /// <summary>
@@ -7,6 +9,15 @@ namespace UnturnedVR.VR
     /// </summary>
     internal static class VRState
     {
+        /// <summary>
+        /// Launch option for testing multiplayer with a second, flat-screen client: XR is never started and no VR patches are
+        /// applied, only the networking (opt-in to the relay) and the remote arms, so this game shows the VR player's hands.
+        /// </summary>
+        public static readonly CommandLineFlag DisableVR = new CommandLineFlag(false, "-disableVR");
+
         public static bool IsActive { get; set; }
+
+        /// <summary>Other VR players' arms follow their relayed poses: in VR, or a flat client started with <see cref="DisableVR"/>.</summary>
+        public static bool ShowsRemoteArms => IsActive || DisableVR;
     }
 }

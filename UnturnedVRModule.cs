@@ -28,7 +28,26 @@ namespace UnturnedVR
             // UnturnedVR.Net registered the RPCs already; this is a no-op then.
             Net.VRNet.Register();
 
+            if (VR.VRState.DisableVR)
+            {
+                InitializeWithoutVR();
+                return;
+            }
+
             InitializeClient();
+        }
+
+        // -disableVR: a flat-screen client for multiplayer tests. No XR and no VR patches; only the remote arms patch and the
+        // relay opt-in, so this game shows the hands of a VR player on the same server.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void InitializeWithoutVR()
+        {
+            harmony = new Harmony(HarmonyId);
+            harmony.CreateClassProcessor(typeof(Patches.RemotePlayerArmsPatch)).Patch();
+
+            VR.VRNetPoseSender.Create(receiveOnly: true);
+
+            VRLog.Info("UnturnedVR initialized without VR (-disableVR): networking and remote arms only.");
         }
 
         // Separate method so the VR types it touches load only after the checks above.

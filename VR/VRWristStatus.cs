@@ -71,6 +71,13 @@ namespace UnturnedVR.VR
         private const float DashFadeIn = 0.25f;
         private const float DashLabelAbove = 25f;         // the game's lock label hangs this far above the box (canvas units)
 
+        // Turret ammo (the game's UseableGun infoBox of the turret gun, in a turret seat: tank gunner, helicopter gun...).
+        // Placed once per seat like the dashboard, below and right of the eyes, but on the turret's yaw part, so it turns
+        // with the turret (head or stick). Offsets in metres along the turret's aim (x right, y up along the yaw axis, z ahead).
+        private const float TurretRight = 0.30f;
+        private const float TurretDown = 0.32f;
+        private const float TurretAhead = 0.65f;
+
         // Gun display (the game's UseableGun infoBox: ammo in the magazine and fire mode, as one box with the game's own look):
         // the whole game box (ammo, fire mode, magazine) hangs over the gun's inner side (the left flank for the right hand,
         // the right flank for the left hand) and is only there while the gun is twisted so that this side faces up, or while
@@ -172,6 +179,17 @@ namespace UnturnedVR.VR
         private float dashAlpha;
         private bool recaptureDash;
 
+        // Turret ammo: a child of the turret's yaw part (or the vehicle when the seat has none), fixed in that frame
+        private Transform turretRoot;
+        private Piece turretPiece;
+        private Passenger turretSeat;
+        private float turretSince;
+        private bool turretCaptured;
+        private Vector3 turretLocalPosition;
+        private Quaternion turretLocalRotation;
+        private float turretAlpha;
+        private bool recaptureTurret;
+
         // Gun display: hangs on the gun's pose, which VRArms hands over every frame (GunPosed) right after it placed the model
         private Transform gunRoot;
         private Piece gunPiece;
@@ -261,6 +279,7 @@ namespace UnturnedVR.VR
         public void Hide()
         {
             HideDash();
+            HideTurret();
             HideGun();
             HideWristAndReveal();
         }
@@ -300,6 +319,7 @@ namespace UnturnedVR.VR
 
             UpdateDash(eye, widthPerMeter);
             UpdateGun(eye);
+            UpdateTurret(eye, widthPerMeter);
             // The wrist panel carries two independent things: the status (vitals box + icon strip, with the glance reveal) and
             // the compass tape. Each has its own setting; the panel and its look-down gesture are shared.
             bool statusOn = VRSettings.WristStatus;
@@ -791,6 +811,7 @@ namespace UnturnedVR.VR
             if (instance != null)
             {
                 instance.recaptureDash = true;
+                instance.recaptureTurret = true;
             }
         }
 
@@ -898,6 +919,129 @@ namespace UnturnedVR.VR
             float distance = new Vector3(DashRight, DashDown, DashAhead).magnitude;
             float mpu = distance * widthPerMeter * DashScale / Mathf.Max(canvasSize.x, 1f);
             ShowPiece(dashPiece, crop, mpu, Vector3.zero, dashAlpha);
+        }
+
+        // ----------------------------------------------------------------------------------------------- turret ammo
+
+        private void HideTurret()
+        {
+            if (turretRoot != null && turretRoot.gameObject.activeSelf)
+            {
+                turretRoot.gameObject.SetActive(false);
+            }
+            turretAlpha = 0f;
+        }
+
+        private void EnsureTurretObjects()
+        {
+            if (turretRoot != null)
+            {
+                return;
+            }
+
+            turretRoot = new GameObject("UnturnedVR Turret Ammo").transform;
+            turretRoot.gameObject.layer = layer;
+            turretRoot.SetParent(parent, worldPositionStays: false);
+            turretPiece = CreatePiece(turretRoot, "UnturnedVR Turret Ammo Box");
+            turretRoot.gameObject.SetActive(false);
+            turretSeat = null;
+            turretCaptured = false;
+        }
+
+        // The turret gun's box of the game (ammo, fire mode), in a turret seat: placed once per seat below and right of the
+        // eyes, on the turret's yaw part, so it turns with the turret whether the head or the stick turns it. Same setting as
+        // the dashboard (both are the vehicle's displays in the world).
+        private void UpdateTurret(Transform eye, float widthPerMeter)
+        {
+            Player player = Player.LocalPlayer;
+            Passenger seat = player != null && player.movement != null ? player.movement.getVehicleSeat() : null;
+            bool turret = seat != null && seat.turret != null && player.equipment != null && player.equipment.isTurret;
+            InteractableVehicle vehicle = turret ? player.movement.getVehicle() : null;
+            UseableGun gun = turret ? player.equipment.useable as UseableGun : null;
+            ISleekElement infoBox = gun != null && gunInfoBoxField != null ? gunInfoBoxField.GetValue(gun) as ISleekElement : null;
+            if (!VRSettings.VehicleDash || eye == null || vehicle == null || infoBox == null || !infoBox.IsVisible)
+            {
+                if (turret && gunLayout != null)
+                {
+                    RestoreGunBox(); // setting off: the game's own layout on the HUD panel (UpdateGun skips turrets)
+                }
+                if (!turret)
+                {
+                    turretSeat = null;
+                    turretCaptured = false;
+                }
+                HideTurret();
+                return;
+            }
+
+            EnsureTurretObjects();
+            if (seat != turretSeat)
+            {
+                turretSeat = seat;
+                turretCaptured = false;
+                turretSince = Time.unscaledTime;
+                turretAlpha = 0f;
+            }
+            if (recaptureTurret)
+            {
+                recaptureTurret = false;
+                turretCaptured = false;
+                turretSince = Time.unscaledTime - DashSettleSeconds; // the head is where it should be already
+            }
+
+            // The fixed-width box of the gun display (a narrow window cannot cut it); its hole is cut from the first frame.
+            TuneGunBox(infoBox);
+            Rect crop = RectOf(infoBox);
+            holes.Add(Inflate(crop, HoleExtra));
+
+            // The yaw part turns about its own up axis (PlayerLook: rotationYaw * Euler(0, yaw, 0)); no yaw part = the vehicle.
+            Transform frame = seat.turretYaw != null ? seat.turretYaw : vehicle.transform;
+            if (!turretCaptured)
+            {
+                if (Time.unscaledTime - turretSince < DashSettleSeconds)
+                {
+                    HideTurret();
+                    return;
+                }
+
+                // Ahead = where the turret fires (its aim; the head when the seat has none), flat in the yaw plane, so the
+                // panel keeps its place under the line of fire as the turret turns. Square to the line of sight.
+                Vector3 up = frame.up;
+                Vector3 ahead = Vector3.ProjectOnPlane(seat.turretAim != null ? seat.turretAim.forward : eye.forward, up);
+                if (ahead.sqrMagnitude < 0.01f)
+                {
+                    ahead = Vector3.ProjectOnPlane(eye.forward, up);
+                }
+                if (ahead.sqrMagnitude < 0.01f)
+                {
+                    ahead = Vector3.Cross(frame.right, up);
+                }
+                ahead.Normalize();
+                Vector3 offset = Vector3.Cross(up, ahead) * TurretRight - up * TurretDown + ahead * TurretAhead;
+                turretLocalPosition = frame.InverseTransformPoint(eye.position + offset);
+                turretLocalRotation = Quaternion.Inverse(frame.rotation) * Quaternion.LookRotation(offset.normalized, up);
+                turretCaptured = true;
+                VRLog.Info("turret ammo: placed " + new Vector3(TurretRight, -TurretDown, TurretAhead).ToString("0.00") + " m from the eyes on \""
+                    + frame.name + "\" (" + (seat.turretYaw != null ? "turret yaw" : "vehicle, the seat has no turret yaw") + ").");
+            }
+
+            if (turretRoot.parent != frame)
+            {
+                turretRoot.SetParent(frame, worldPositionStays: false);
+            }
+            turretRoot.localPosition = turretLocalPosition;
+            turretRoot.localRotation = turretLocalRotation;
+            turretRoot.localScale = InverseScale(frame.lossyScale);
+
+            turretAlpha = Mathf.MoveTowards(turretAlpha, 1f, Time.unscaledDeltaTime / DashFadeIn);
+            if (!turretRoot.gameObject.activeSelf)
+            {
+                turretRoot.gameObject.SetActive(true);
+            }
+
+            float distance = new Vector3(TurretRight, TurretDown, TurretAhead).magnitude;
+            float mpu = distance * widthPerMeter * DashScale / Mathf.Max(canvasSize.x, 1f);
+            ShowPiece(turretPiece, crop, mpu, Vector3.zero, turretAlpha);
         }
 
         // ----------------------------------------------------------------------------------------------- gun display
@@ -1149,6 +1293,11 @@ namespace UnturnedVR.VR
             bool enabled = VRSettings.GunDisplay;
             Player player = Player.LocalPlayer;
             UseableGun gun = player != null && player.equipment != null ? player.equipment.useable as UseableGun : null;
+            if (player != null && player.equipment != null && player.equipment.isTurret)
+            {
+                HideGun(); // a turret gun has no model in the hand: its box is the turret panel (UpdateTurret, which owns the layout then)
+                return;
+            }
             ISleekElement infoBox = gun != null && gunInfoBoxField != null ? gunInfoBoxField.GetValue(gun) as ISleekElement : null;
             if (gunLayout != null && (!enabled || infoBox != gunLayout.Box))
             {

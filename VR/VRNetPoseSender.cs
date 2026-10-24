@@ -26,9 +26,11 @@ namespace UnturnedVR.VR
 
         private float nextSend;
         private float nextOptIn;
+        private bool receiveOnly;
         private uint sequence;
 
-        public static void Create()
+        /// <param name="receiveOnly">Only the relay opt-in, no poses: a flat client started with -disableVR (VRState.DisableVR).</param>
+        public static void Create(bool receiveOnly = false)
         {
             if (!Net.VRRole.CanRunClientCode)
             {
@@ -39,6 +41,7 @@ namespace UnturnedVR.VR
             GameObject host = new GameObject("UnturnedVR pose sender");
             DontDestroyOnLoad(host);
             instance = host.AddComponent<VRNetPoseSender>();
+            instance.receiveOnly = receiveOnly;
         }
 
         private void OnDestroy()
@@ -58,7 +61,7 @@ namespace UnturnedVR.VR
         /// </summary>
         public static void SendLauncherShot(Player player, Vector3 muzzlePosition, Quaternion muzzleRotation)
         {
-            if (instance == null || !VRNet.ServerAcceptsPoses)
+            if (instance == null || instance.receiveOnly || !VRNet.ServerAcceptsPoses)
             {
                 return;
             }
@@ -102,7 +105,7 @@ namespace UnturnedVR.VR
 
             SendOptIn();
 
-            if (Time.unscaledTime < nextSend)
+            if (receiveOnly || Time.unscaledTime < nextSend)
             {
                 return;
             }
@@ -189,6 +192,13 @@ namespace UnturnedVR.VR
             int itemHand = VRArms.Active ? VRArms.ItemHand : -1;
             pose.TwoHanded = VRArms.Active && VRHold.Both;
             pose.ItemHand = itemHand == VRHands.Left ? VRPoseData.ItemHandLeft : itemHand == VRHands.Right ? VRPoseData.ItemHandRight : VRPoseData.ItemHandNone;
+
+            // The held item as it sits in the hand (hold, two-handed aim and all), so other players' games put it there too.
+            if (pose.ItemHand != VRPoseData.ItemHandNone)
+            {
+                pose.ItemPosition = VRArms.ItemPosition;
+                pose.ItemRotation = VRArms.ItemRotation;
+            }
 
             // The muzzle is sent under the same condition the client shoots from it (a gun in a hand, no wall between the head and the
             // muzzle); otherwise the server keeps the vanilla head aim, as the client does.

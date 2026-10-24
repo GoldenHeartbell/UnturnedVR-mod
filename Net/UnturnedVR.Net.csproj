@@ -8,7 +8,7 @@
     <AssemblyName>UnturnedVR.Net</AssemblyName>
     <RootNamespace>UnturnedVR.Net</RootNamespace>
     <!-- Keep in step with <Version> in ../UnturnedVR.csproj (scripts/make-dist.ps1 sets and checks both). -->
-    <Version>0.2.5</Version>
+    <Version>0.2.6</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
   </PropertyGroup>

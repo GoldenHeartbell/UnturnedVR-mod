@@ -55,6 +55,8 @@ namespace UnturnedVR.VR
         private int used;
         private bool loggedLabel;
         private bool loggedHitmarker;
+        private readonly List<int> order = new List<int>();
+        private readonly List<Rect> placedMarkers = new List<Rect>();
 
         // Per update
         private Transform eye;
@@ -206,9 +208,21 @@ namespace UnturnedVR.VR
                 return;
             }
 
+            // Newest first. Most markers sit on the screen centre (unless the game's follow-world-position setting is on), so
+            // several at once are drawn on top of each other and the crop of one also holds the others: each quad then showed
+            // a doubled marker. Only the newest of overlapping markers is shown; the older ones are switched off for this
+            // frame (the game sets their visibility again in its next Update, like HideFlat).
+            order.Clear();
             for (int i = 0; i < markers.Count; i++)
             {
-                HitmarkerInfo info = markers[i];
+                order.Add(i);
+            }
+            order.Sort((a, b) => markers[a].aliveTime.CompareTo(markers[b].aliveTime));
+            placedMarkers.Clear();
+
+            for (int n = 0; n < order.Count; n++)
+            {
+                HitmarkerInfo info = markers[order[n]];
                 SleekHitmarker element = info.sleekElement;
                 if (element == null || !element.IsVisible)
                 {
@@ -220,9 +234,22 @@ namespace UnturnedVR.VR
                     continue;
                 }
 
+                Rect rect = RectOf(element);
+                bool covered = false;
+                for (int k = 0; k < placedMarkers.Count && !covered; k++)
+                {
+                    covered = placedMarkers[k].Overlaps(rect);
+                }
+                if (covered)
+                {
+                    element.IsVisible = false;
+                    continue;
+                }
+                placedMarkers.Add(rect);
+
                 // Always at the hit point (the game's own setting only picks that or the screen centre, which has no
                 // meaning with a head that looks anywhere): the element's content is relative to its own rectangle.
-                if (AddPiece(RectOf(element), info.worldPosition, HitmarkerMinDistance) && !loggedHitmarker)
+                if (AddPiece(rect, info.worldPosition, HitmarkerMinDistance) && !loggedHitmarker)
                 {
                     loggedHitmarker = true;
                     VRLog.Info("world labels: a hit marker now shows at the hit point in the world instead of on the HUD panel.");

@@ -41,6 +41,59 @@ namespace UnturnedVR.VR
         private static bool hasLastHeadYaw;
         private static float lastHeadYaw;
         private static float rigYawOffset;
+        private static float seatCounterYaw; // turret yaw the rig is turned back by, while the seat turns with the turret
+
+        private static void ApplyRigYaw()
+        {
+            rigObject.transform.localRotation = Quaternion.Euler(0f, rigYawOffset - seatCounterYaw, 0f);
+        }
+
+        /// <summary>
+        /// The seat the rig hangs on is carried by a turret (the tank's gunner seat): it turns by the turret's yaw, so the rig
+        /// is turned back by the same amount and the view does not turn twice. 0 when the seat does not turn with the turret.
+        /// </summary>
+        public static void SetSeatCounterYaw(float yaw)
+        {
+            if (rigObject == null || seatCounterYaw == yaw)
+            {
+                return;
+            }
+            seatCounterYaw = yaw;
+            ApplyRigYaw();
+        }
+
+        // Drops the counter yaw without moving the view (it goes into the rig offset).
+        private static void FoldSeatCounterYaw()
+        {
+            rigYawOffset -= seatCounterYaw;
+            seatCounterYaw = 0f;
+        }
+
+        /// <summary>
+        /// Sets the counter yaw without moving the view (the change goes into the rig offset). For switching the turret
+        /// setting while seated: 0 = the rig turns with a turret-carried seat from now on, the turret yaw = it is held still again.
+        /// </summary>
+        public static void SetSeatCounterYawKeepView(float yaw)
+        {
+            if (rigObject == null || seatCounterYaw == yaw)
+            {
+                return;
+            }
+            rigYawOffset += yaw - seatCounterYaw;
+            seatCounterYaw = yaw;
+            ApplyRigYaw();
+        }
+
+        /// <summary>Turns the view in a seat by <paramref name="degrees"/> (positive = right), as if the head turned.</summary>
+        public static void TurnSeatView(float degrees)
+        {
+            if (rigObject == null || !hasLastHeadYaw)
+            {
+                return;
+            }
+            rigYawOffset += degrees;
+            ApplyRigYaw();
+        }
 
         public static void AttachToLocalPlayer(Player player)
         {
@@ -66,6 +119,7 @@ namespace UnturnedVR.VR
             rigObject.transform.localRotation = Quaternion.identity;
             hasLastHeadYaw = false; // re-align view with the body on (re)spawn
             rigYawOffset = 0f;
+            seatCounterYaw = 0f;
             InMenu = false;
 
             DisableMainCamera(mainCamera);
@@ -95,6 +149,7 @@ namespace UnturnedVR.VR
             rigObject.transform.localRotation = Quaternion.identity;
             hasLastHeadYaw = false;
             rigYawOffset = 0f;
+            seatCounterYaw = 0f;
             InMenu = true;
 
             DisableMainCamera(mainCamera);
@@ -128,7 +183,7 @@ namespace UnturnedVR.VR
                 hasLastHeadYaw = true;
                 lastHeadYaw = headYaw;
                 rigYawOffset = -headYaw;
-                rigObject.transform.localRotation = Quaternion.Euler(0f, rigYawOffset, 0f);
+                ApplyRigYaw();
                 return 0f;
             }
 
@@ -140,7 +195,7 @@ namespace UnturnedVR.VR
             }
 
             rigYawOffset -= delta;
-            rigObject.transform.localRotation = Quaternion.Euler(0f, rigYawOffset, 0f);
+            ApplyRigYaw();
             return delta;
         }
 
@@ -157,10 +212,12 @@ namespace UnturnedVR.VR
                 return 0f;
             }
 
+            FoldSeatCounterYaw();
+
             // View yaw relative to the body = rig offset + head yaw in tracking space.
             float delta = Mathf.DeltaAngle(0f, rigYawOffset + lastHeadYaw);
             rigYawOffset -= delta;
-            rigObject.transform.localRotation = Quaternion.Euler(0f, rigYawOffset, 0f);
+            ApplyRigYaw();
             return delta;
         }
 
@@ -176,7 +233,8 @@ namespace UnturnedVR.VR
             }
 
             rigYawOffset = -lastHeadYaw;
-            rigObject.transform.localRotation = Quaternion.Euler(0f, rigYawOffset, 0f);
+            seatCounterYaw = 0f;
+            ApplyRigYaw();
         }
 
         /// <summary>
@@ -201,6 +259,31 @@ namespace UnturnedVR.VR
             if (PitchFlipActive && pitchFlip != null && !pitchFlip.HoldsFlippedPose)
             {
                 pitch = 180f - pitch;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Where the headset looks relative to the body the rig hangs on (in a seat: the seat), in the game's convention:
+        /// yaw in degrees (0 = the body's forward, positive = right), pitch 0 = up, 90 = level, 180 = down. Unlike
+        /// <see cref="TryGetHeadPitch"/> the pitch follows the seat when the vehicle tilts. False until the rig is live and has a head pose.
+        /// </summary>
+        public static bool TryGetHeadAnglesInBody(out float yaw, out float pitch)
+        {
+            yaw = 0f;
+            pitch = 90f;
+            Camera eye = ActiveCamera;
+            Transform body = rigObject != null ? rigObject.transform.parent : null;
+            if (eye == null || body == null || !HasHeadPose)
+            {
+                return false;
+            }
+
+            Vector3 forward = body.InverseTransformDirection(eye.transform.forward);
+            pitch = 90f - Mathf.Asin(Mathf.Clamp(forward.y, -1f, 1f)) * Mathf.Rad2Deg;
+            if (forward.x * forward.x + forward.z * forward.z >= 0.0001f)
+            {
+                yaw = Mathf.Atan2(forward.x, forward.z) * Mathf.Rad2Deg;
             }
             return true;
         }
@@ -260,6 +343,7 @@ namespace UnturnedVR.VR
             hmdTransform = hmdObject.transform;
             hasLastHeadYaw = false;
             rigYawOffset = 0f;
+            seatCounterYaw = 0f;
             rigHeight = rigObject.AddComponent<VRRigHeight>();
             rigHeight.Hmd = hmdObject.transform;
             if (VRDebugFlags.SessionMonitor)
@@ -427,8 +511,10 @@ namespace UnturnedVR.VR
             to.useOcclusionCulling = from.useOcclusionCulling;
 
             CopyPostProcessLayer(from, to);
-            VRHighlighting.LogCameraComponents(from);
+            CopyDecalRenderer(from, to);
+            // No FlareLayer on purpose: lens flares are a screen-space effect that does not suit a headset.
             VRHighlighting.Sync(from, to);
+            VRHighlighting.LogCameraComponents(from, to);
         }
 
         // MainCamera carries a PostProcessLayer (deferred fog and the base lighting/post effects,
@@ -463,6 +549,33 @@ namespace UnturnedVR.VR
             target.SetActive(wasActive);
 
             VRLog.Info("copied PostProcessLayer to VR camera (resources " + (resources != null ? "found" : "MISSING") + ").");
+        }
+
+        // MainCamera carries the game's DecalRenderer: a command buffer (BeforeLighting, deferred only) that draws the
+        // projected decals of DecalSystem into the g-buffer, among them the blood splatters on the ground. The VR camera
+        // needs its own, with the same cube mesh; it reads the game's decal list and settings itself every frame.
+        internal static void CopyDecalRenderer(Camera from, Camera to)
+        {
+            DecalRenderer source = from.GetComponent<DecalRenderer>();
+            if (source == null)
+            {
+                VRLog.Warn("no DecalRenderer on MainCamera: decals (blood splatters) are not drawn in VR.");
+                return;
+            }
+            if (to.GetComponent<DecalRenderer>() != null)
+            {
+                return;
+            }
+
+            // OnEnable adds the command buffer; the mesh is set first so the first frame already draws.
+            GameObject target = to.gameObject;
+            bool wasActive = target.activeSelf;
+            target.SetActive(false);
+            DecalRenderer decals = target.AddComponent<DecalRenderer>();
+            decals.cube = source.cube;
+            target.SetActive(wasActive);
+
+            VRLog.Info("copied DecalRenderer to VR camera (cube mesh " + (source.cube != null ? "found" : "MISSING") + ").");
         }
 
         private static void DisableMainCamera(Camera mainCamera)

@@ -176,8 +176,9 @@ namespace UnturnedVR.Net
 
         /// <summary>
         /// A whole pose, checked against what the server knows. The head must be near the server's position of the player, the
-        /// hands and the muzzle within reach of the head, every number finite, and the rotations usable (they are normalised
-        /// here, so later code can rely on them). The muzzle only exists while an item is held. False means drop the message.
+        /// hands, the muzzle and the held item's origin within reach of the head, every number finite, and the rotations usable (they
+        /// are normalised here, so later code can rely on them). The muzzle and the item pose only exist while an item is held. False
+        /// means drop the message.
         /// </summary>
         public static bool TryValidatePose(in Sender sender, ref VRPoseData pose)
         {
@@ -206,6 +207,12 @@ namespace UnturnedVR.Net
                     return false;
                 }
                 pose.MuzzleDirection.Normalize();
+            }
+
+            if (pose.ItemHand != VRPoseData.ItemHandNone
+                && !(IsWithin(pose.ItemPosition, pose.HeadPosition, MaxMuzzleDistanceFromHead) && TryNormalize(ref pose.ItemRotation)))
+            {
+                return false;
             }
 
             return true;

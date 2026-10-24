@@ -34,6 +34,10 @@ namespace UnturnedVR.Patches
             {
                 return;
             }
+            if (player.equipment.isTurret)
+            {
+                return; // a vehicle turret fires from its own aim (PlayerLookTurretHeadAimPatch turns it with the head)
+            }
             if (!VR.VRGun.TryGetMuzzle(player, out Vector3 position, out Quaternion rotation))
             {
                 VRLog.Warn("shot from the head: " + VR.VRGun.MuzzleFailure + ".");

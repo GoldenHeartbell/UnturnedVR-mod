@@ -12,13 +12,14 @@ namespace UnturnedVR.Net
         // 2: added ReceiveShotPose (the pose at the instant of a launcher shot).
         // 3: the pose has a two-handed bit, and the server relays poses to other players (ReceiveRelayOptIn, ReceiveRelayPoses).
         // 4: the relayed hands and muzzle are relative to the head, not to the body (same layout, different meaning).
-        public const byte Version = 4;
+        // 5: while an item hand is set, the pose has the held item's own pose (ItemPosition, ItemRotation), relayed so other players see it in the hand.
+        public const byte Version = 5;
     }
 
     /// <summary>
     /// What a VR client tells the server about the player: head, hands, which hand holds the item, and the gun's muzzle. World space.
     /// The write and read code is here, in the assembly both sides load, so the two can never drift apart. The size is bounded:
-    /// at most 32 + 6 + 3 x (60 + 27) + 60 + 27 bits, about 48 bytes.
+    /// at most 32 + 6 + 4 x (60 + 27) + 60 + 27 bits, about 60 bytes.
     /// </summary>
     internal struct VRPoseData
     {
@@ -40,6 +41,7 @@ namespace UnturnedVR.Net
         /// <summary>Both hands hold the item (the second hand is on the gun's grip point). Only used to show it to other players.</summary>
         public bool TwoHanded;
 
+
         public Vector3 HeadPosition;
         public Quaternion HeadRotation;
         public Vector3 LeftPosition;
@@ -48,6 +50,8 @@ namespace UnturnedVR.Net
         public Quaternion RightRotation;
         public Vector3 MuzzlePosition;
         public Vector3 MuzzleDirection;
+        public Vector3 ItemPosition;
+        public Quaternion ItemRotation;
 
         public void Write(NetPakWriter writer)
         {
@@ -74,6 +78,11 @@ namespace UnturnedVR.Net
             {
                 writer.WriteClampedVector3(MuzzlePosition);
                 writer.WriteNormalVector3(MuzzleDirection);
+            }
+            if (ItemHand != ItemHandNone)
+            {
+                writer.WriteClampedVector3(ItemPosition);
+                writer.WriteQuaternion(ItemRotation);
             }
         }
 
@@ -110,6 +119,10 @@ namespace UnturnedVR.Net
                 return false;
             }
             if (pose.HasMuzzle && (!reader.ReadClampedVector3(out pose.MuzzlePosition) || !reader.ReadNormalVector3(out pose.MuzzleDirection)))
+            {
+                return false;
+            }
+            if (pose.ItemHand != ItemHandNone && (!reader.ReadClampedVector3(out pose.ItemPosition) || !reader.ReadQuaternion(out pose.ItemRotation)))
             {
                 return false;
             }
