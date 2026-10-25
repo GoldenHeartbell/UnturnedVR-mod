@@ -13,7 +13,9 @@ namespace UnturnedVR.Net
         // 3: the pose has a two-handed bit, and the server relays poses to other players (ReceiveRelayOptIn, ReceiveRelayPoses).
         // 4: the relayed hands and muzzle are relative to the head, not to the body (same layout, different meaning).
         // 5: while an item hand is set, the pose has the held item's own pose (ItemPosition, ItemRotation), relayed so other players see it in the hand.
-        public const byte Version = 5;
+        // 6: the pose has an instant-melee bit: the client lands a one-shot melee hit on the swing's first input tick, and the server
+        //    does the same for that player (VRNetServerMelee), so a physical swing hits on contact online too.
+        public const byte Version = 6;
     }
 
     /// <summary>
@@ -41,6 +43,15 @@ namespace UnturnedVR.Net
         /// <summary>Both hands hold the item (the second hand is on the gun's grip point). Only used to show it to other players.</summary>
         public bool TwoHanded;
 
+        /// <summary>
+        /// How this client's version times melee hits, not what the player holds: it lands every one-shot melee hit on the swing's
+        /// first input tick, not at the game's hit frame partway into the anim (physical melee). The server then does the same for
+        /// this player (VRNetServerMelee), so both run the hit in the same tick and the server takes the client's hit. Always set
+        /// by a VR client of protocol 6 or later. Which items it applies to is not in the pose: both sides check the equipped item
+        /// themselves (one-shot melee, not repeated), the server from its own equipment state, which matches the input tick it
+        /// runs the swing in; a pose (unreliable, 20 a second) could still describe the previous item right after a switch.
+        /// </summary>
+        public bool HitsOnFirstTick;
 
         public Vector3 HeadPosition;
         public Quaternion HeadRotation;
@@ -61,6 +72,7 @@ namespace UnturnedVR.Net
             writer.WriteBit(RightTracked);
             writer.WriteBit(HasMuzzle);
             writer.WriteBit(TwoHanded);
+            writer.WriteBit(HitsOnFirstTick);
 
             writer.WriteClampedVector3(HeadPosition);
             writer.WriteQuaternion(HeadRotation);
@@ -101,7 +113,7 @@ namespace UnturnedVR.Net
             }
             pose.ItemHand = (byte) itemHand;
             if (!reader.ReadBit(out pose.LeftTracked) || !reader.ReadBit(out pose.RightTracked) || !reader.ReadBit(out pose.HasMuzzle)
-                || !reader.ReadBit(out pose.TwoHanded))
+                || !reader.ReadBit(out pose.TwoHanded) || !reader.ReadBit(out pose.HitsOnFirstTick))
             {
                 return false;
             }

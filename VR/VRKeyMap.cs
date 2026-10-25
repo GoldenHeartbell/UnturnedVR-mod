@@ -114,6 +114,7 @@ namespace UnturnedVR.VR
             if (key == KeyCode.None) return false; // an unbound action is never pressed
             Refresh();
             if (VRAttachMenu.Wanted && key == ControlsSettings.attach) return true;
+            if (VRMelee.KeyHeld(key)) return true;
             foreach (Entry e in entries)
             {
                 if (e.Held && e.Key() == key) return true;
@@ -236,6 +237,10 @@ namespace UnturnedVR.VR
                 if (e.Button == VRButton.Trigger && VRGestures.TriggerConsumed(right))
                 {
                     raw = false;
+                }
+                if ((e.Role == 1 || e.Role == 2) && VRMelee.TakesTriggers)
+                {
+                    raw = false; // a one-shot melee weapon attacks by swinging it (VRMelee), not with the triggers
                 }
                 if (e.Role == 3 || e.Role == 5)
                 {

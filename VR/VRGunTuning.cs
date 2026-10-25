@@ -58,7 +58,15 @@ namespace UnturnedVR.VR
             "# Fishing rod: how far up the rod (towards the tip, metres) the hand holds it; negative = lower, towards the butt. Default -0.45:\n" +
             "# rodgrip -0.45\n" +
             "# Axes (melee items with \"axe\" in their name, pickaxes included): same, along the handle (towards the head); negative = lower. Default -0.22:\n" +
-            "# axegrip -0.22\n";
+            "# axegrip -0.22\n" +
+            "# Other melee items (swords, knives, bats, tools; not the flashlight): the hand holds them this far up from the end of the\n" +
+            "# handle (metres; never higher than where the game holds them). Default 0.12:\n" +
+            "# meleegrip 0.12\n" +
+            "# Any melee item (swords, knives, bats, axes): \"grip item <id or guid> metres\" slides that one item along its length through\n" +
+            "# the hand, measured from where the game holds it (axes: replaces axegrip); negative = hand lower, the item moves up. Example:\n" +
+            "# grip item 1036 -0.05\n" +
+            "# An \"item\" line also moves a melee item off the controller (x right, y up, z forward, metres, then pitch yaw roll):\n" +
+            "# item 1036 0 -0.03 0\n";
 
         // Built-in per-class defaults, used when the file has no line for the class.
         private static Pose BuiltIn(string className)
@@ -98,6 +106,11 @@ namespace UnturnedVR.VR
                 Support = new Vector3(0f, 0.35f, -0.03f),
                 Inward = -0.17f,
             },
+            // NP553 "Baal" (workshop A6 Polaris, id 36125), a pump shotgun: the rifle pose 15 cm further back, onto the hand.
+            ["c8a9568978554ee4974e58b9dd987f92"] = new ItemDefault
+            {
+                Pose = Make(new Vector3(0f, 0.09f, -0.08f), 25f),
+            },
         };
 
         private static readonly Dictionary<string, Pose> classes =new Dictionary<string, Pose>();
@@ -106,6 +119,7 @@ namespace UnturnedVR.VR
         private static readonly Dictionary<string, Vector3> itemSupports = new Dictionary<string, Vector3>();
         private static readonly Dictionary<string, float> classInwards = new Dictionary<string, float>();
         private static readonly Dictionary<string, float> itemInwards = new Dictionary<string, float>();
+        private static readonly Dictionary<string, float> itemGrips = new Dictionary<string, float>(); // "grip item <id|guid> <metres>"
         private static readonly Dictionary<string, Vector2> smooths = new Dictionary<string, Vector2>(); // x = minCutoff, y = beta (NaN = default)
         private static DateTime loadedStamp = DateTime.MinValue;
         private static string path;
@@ -178,6 +192,19 @@ namespace UnturnedVR.VR
         private static float rodGrip = DefaultRodGrip;
         private const float DefaultAxeGrip = -0.22f;
         private static float axeGrip = DefaultAxeGrip;
+        // GUESS: a hand's width (about 10 cm) above the end of the handle, so the hand closes around the handle, not the guard or blade.
+        private const float DefaultMeleeButtGrip = 0.12f;
+        private static float meleeButtGrip = DefaultMeleeButtGrip;
+
+        /// <summary>
+        /// Metres up from the butt end of the handle where the hand holds a melee item that is no axe and no flashlight and has no
+        /// "grip item" line (swords, knives, bats...). Never higher than where the game holds it.
+        /// </summary>
+        public static float GetMeleeButtGrip()
+        {
+            Reload();
+            return meleeButtGrip;
+        }
 
         /// <summary>Metres from an axe model's origin up the handle (towards the head) where the hand holds it.</summary>
         public static float GetAxeGrip()
@@ -192,6 +219,35 @@ namespace UnturnedVR.VR
             Reload();
             return rodGrip;
         }
+
+        /// <summary>
+        /// The file's "grip item &lt;id|guid&gt; &lt;metres&gt;" line for one item: how far along its length (towards the tip / head) the hand
+        /// holds it; negative = lower. Lets any melee item slide through the hand, not only axes (wins over axegrip).
+        /// </summary>
+        public static bool TryGetItemPose(ItemAsset asset, out Pose pose)
+        {
+            // An "item <id|guid> x y z [pitch yaw roll]" line for an item that is no gun or optic (melee): moved off the controller by it.
+            Reload();
+            string id = asset.id != 0 ? asset.id.ToString() : null;
+            return items.TryGetValue(asset.GUID.ToString("N"), out pose) || (id != null && items.TryGetValue(id, out pose));
+        }
+
+        public static bool TryGetItemGrip(ItemAsset asset, out float grip)
+        {
+            Reload();
+            string guid = asset.GUID.ToString("N");
+            string id = asset.id != 0 ? asset.id.ToString() : null;
+            // Order: a "grip item" line of the file, then the built-in item grip.
+            return itemGrips.TryGetValue(guid, out grip) || (id != null && itemGrips.TryGetValue(id, out grip))
+                || builtInItemGrips.TryGetValue(guid, out grip);
+        }
+
+        // Built-in "grip item" values (by GUID), tuned in the headset; a "grip item" line of the file still overrides them.
+        private static readonly Dictionary<string, float> builtInItemGrips = new Dictionary<string, float>
+        {
+            // Katana (id 1036): moved 40 cm up through the hand (the hand sat above the handle).
+            ["91e181da090a4972945e0e2334215c47"] = -0.40f,
+        };
 
         public static Pose GetOptic(ItemOpticAsset optic, out string className)
         {
@@ -257,9 +313,11 @@ namespace UnturnedVR.VR
                 itemSupports.Clear();
                 classInwards.Clear();
                 itemInwards.Clear();
+                itemGrips.Clear();
                 smooths.Clear();
                 rodGrip = DefaultRodGrip;
                 axeGrip = DefaultAxeGrip;
+                meleeButtGrip = DefaultMeleeButtGrip;
                 foreach (string raw in File.ReadAllLines(path))
                 {
                     ParseLine(raw);
@@ -298,6 +356,19 @@ namespace UnturnedVR.VR
                 }
                 return;
             }
+            if (parts[0].Equals("meleegrip", StringComparison.OrdinalIgnoreCase))
+            {
+                // "meleegrip <metres>": how far up from the butt end of the handle the hand holds other melee items (see GetMeleeButtGrip).
+                if (parts.Length >= 2 && TryFloat(parts[1], out float buttGrip))
+                {
+                    meleeButtGrip = buttGrip;
+                }
+                else
+                {
+                    VRLog.Warn("gun: ignored line in " + FileName + ": " + line);
+                }
+                return;
+            }
             bool isRodGrip = parts[0].Equals("rodgrip", StringComparison.OrdinalIgnoreCase);
             if (isRodGrip || parts[0].Equals("axegrip", StringComparison.OrdinalIgnoreCase))
             {
@@ -313,6 +384,19 @@ namespace UnturnedVR.VR
                     {
                         axeGrip = grip;
                     }
+                }
+                else
+                {
+                    VRLog.Warn("gun: ignored line in " + FileName + ": " + line);
+                }
+                return;
+            }
+            if (parts[0].Equals("grip", StringComparison.OrdinalIgnoreCase))
+            {
+                // "grip item <id|guid> <metres>": slide one melee item along its length through the hand (see TryGetItemGrip).
+                if (parts.Length >= 4 && parts[1].Equals("item", StringComparison.OrdinalIgnoreCase) && TryFloat(parts[3], out float itemGrip))
+                {
+                    itemGrips[Guid.TryParse(parts[2], out Guid gripGuid) ? gripGuid.ToString("N") : parts[2]] = itemGrip;
                 }
                 else
                 {

@@ -99,6 +99,8 @@ namespace UnturnedVR.VR
         private const float TwoHandFullSpan = 0.18f; // from here on the barrel points fully at the other hand
         private bool itemIsGun;
         private bool itemIsOptic;      // binoculars: moved off the hand by opticPose
+        private bool itemIsPosed;      // a melee item with an "item" line in gun-offsets.txt: moved off the hand by itemPose
+        private VRGunTuning.Pose itemPose;
         private VRGunTuning.Pose opticPose;
         private bool itemSlides;       // fishing rod / axe: slid along its own length so the hand holds it somewhere else on the handle
         private Vector3 slideTipLocal; // model-local unit vector from the model origin towards the rod's tip / the axe's head
@@ -360,6 +362,7 @@ namespace UnturnedVR.VR
             VRAttachMenu.CachePanelPose(head.position); // the gun is in its final place now
             if (allowCalibrate)
             {
+                VRMelee.Update(); // once per frame (its speeds are per frame), with the blade in its final place
                 VRWristStatus.ArmsPosed(); // the wrist panel's gate reads the forearm in this final pose
             }
 
@@ -388,6 +391,7 @@ namespace UnturnedVR.VR
                 loggedGiveUp = false;
                 itemIsGun = false; // the pose of the previous item must not apply while this one is not calibrated
                 itemIsOptic = false;
+                itemIsPosed = false;
                 itemSlides = false;
                 hasSupport = false;
                 provisionalReady = false;
@@ -436,7 +440,8 @@ namespace UnturnedVR.VR
                     }
                     else
                     {
-                        itemSlides = TryPrepareSlide(model, player.equipment.asset, out slideTipLocal, out slideLength, out _, out _, out _);
+                        itemSlides = TryPrepareSlide(model, FinalLossyScale(model), player.equipment.asset, out slideTipLocal, out slideLength, out _, out _, out _);
+                        itemIsPosed = player.equipment.asset is ItemMeleeAsset && VRGunTuning.TryGetItemPose(player.equipment.asset, out itemPose);
                     }
                     provisionalReady = true;
                 }
@@ -467,9 +472,16 @@ namespace UnturnedVR.VR
             provisionalPending = false;
             itemIsGun = false;
             itemIsOptic = false;
-            itemSlides = TryPrepareSlide(model, player.equipment.asset, out slideTipLocal, out slideLength, out string slideKind,
+            itemIsPosed = player.equipment.asset is ItemMeleeAsset && VRGunTuning.TryGetItemPose(player.equipment.asset, out itemPose);
+            if (itemIsPosed)
+            {
+                VRLog.Info("melee: id " + player.equipment.asset.id + " moved off the hand by " + itemPose.Offset.ToString("0.000") + ", pitch/yaw/roll "
+                    + Wrap(itemPose.Rotation.eulerAngles).ToString("0.#") + " (item line of gun-offsets.txt).");
+            }
+            itemSlides = TryPrepareSlide(model, FinalLossyScale(model), player.equipment.asset, out slideTipLocal, out slideLength, out string slideKind,
                 out float towardsTip, out float towardsButt);
             VRPerf.LogModel(model);
+            LocalizeHitEmitter(model, player.equipment.asset);
             if (slideKind != null)
             {
                 ItemAsset slideAsset = player.equipment.asset;
@@ -636,6 +648,11 @@ namespace UnturnedVR.VR
                 position += rotation * opticPose.Offset; // off the hand, so the hand holds them from below
                 rotation *= opticPose.Rotation;
             }
+            else if (itemIsPosed)
+            {
+                position += rotation * itemPose.Offset; // controller frame, like a gun's offset
+                rotation *= itemPose.Rotation;
+            }
             // The animation's hold, except for a bow: the vanilla bow is slanted in the view, so it is stood up from its own axes (VRGun.TryGetBowHold).
             Quaternion hold = itemToRoot;
             if (itemIsGun && VRGun.TryGetBowHold(lastModel, out Quaternion bowHold))
@@ -769,8 +786,10 @@ namespace UnturnedVR.VR
         // asset's file name or item name contains "axe", pickaxes included). Finds the handle's long axis in the model's local space and
         // which way the tip / head is: the model's longest mesh extent; the tip of a rod is the end further from the origin (GUESS: the origin
         // is at the handle), the head of an axe the end with the thicker cross-section (else also the end further from the origin).
-        // length = the "rodgrip" / "axegrip" value of gun-offsets.txt. Distances in metres. Returns false (kind set) when the model has no mesh.
-        private static bool TryPrepareSlide(Transform model, ItemAsset asset, out Vector3 tip, out float length, out string kind, out float towardsTip, out float towardsButt)
+        // Any other melee item slides too ("melee": tip like a rod's, or the wider end when both ends are about as far, like an axe),
+        // by its "grip item" line or else down to "meleegrip" above the butt end; a flashlight only with a "grip item" line.
+        // length = the "grip item" / "rodgrip" / "axegrip" value of gun-offsets.txt. Distances in metres. Returns false (kind set) when the model has no mesh.
+        private static bool TryPrepareSlide(Transform model, float scale, ItemAsset asset, out Vector3 tip, out float length, out string kind, out float towardsTip, out float towardsButt)
         {
             tip = Vector3.forward;
             length = 0f;
@@ -785,11 +804,18 @@ namespace UnturnedVR.VR
             {
                 kind = "axe";
             }
+            bool hasItemGrip = VRGunTuning.TryGetItemGrip(asset, out float itemGrip);
+            if (kind == null && asset is ItemMeleeAsset melee && (hasItemGrip || !melee.isLight))
+            {
+                // Any other melee item (swords, knives, bats, tools): tip = the end further from the origin. A flashlight keeps the
+                // game's hold unless it has a "grip item" line.
+                kind = "melee";
+            }
             if (kind == null)
             {
                 return false;
             }
-            length = kind == "rod" ? VRGunTuning.GetRodGrip() : VRGunTuning.GetAxeGrip();
+            length = hasItemGrip ? itemGrip : kind == "rod" ? VRGunTuning.GetRodGrip() : kind == "axe" ? VRGunTuning.GetAxeGrip() : 0f;
 
             List<Vector3> points = new List<Vector3>();
             foreach (Renderer renderer in model.GetComponentsInChildren<Renderer>(false))
@@ -800,7 +826,7 @@ namespace UnturnedVR.VR
                 {
                     continue;
                 }
-                if (kind == "axe" && mesh.isReadable)
+                if ((kind == "axe" || kind == "melee") && mesh.isReadable)
                 {
                     foreach (Vector3 vertex in mesh.vertices)
                     {
@@ -832,7 +858,10 @@ namespace UnturnedVR.VR
             int axis = size.x >= size.y && size.x >= size.z ? 0 : size.y >= size.z ? 1 : 2;
             bool positive = Mathf.Abs(max[axis]) >= Mathf.Abs(min[axis]);
 
-            if (kind == "axe")
+            // A melee item only when both ends are about as far from the origin (a rake held near its middle), as VRMelee decides its blade tip.
+            float nearEnd = Mathf.Min(Mathf.Abs(max[axis]), Mathf.Abs(min[axis]));
+            float farEnd = Mathf.Max(Mathf.Abs(max[axis]), Mathf.Abs(min[axis]));
+            if (kind == "axe" || (kind == "melee" && nearEnd > farEnd * 0.75f))
             {
                 // Cross-section (widest range over the two other axes) in the outer quarter at each end of the handle.
                 float quarter = size[axis] * 0.25f;
@@ -868,12 +897,39 @@ namespace UnturnedVR.VR
                 }
             }
 
-            float scale = model.lossyScale.x;
+            // scale: the model's world scale once it is posed (FinalLossyScale), not now: right after equip the arm scale still applies.
             tip = Vector3.zero;
             tip[axis] = positive ? 1f : -1f;
             towardsTip = (positive ? max[axis] : -min[axis]) * scale;
             towardsButt = (positive ? -min[axis] : max[axis]) * scale;
+            if (kind == "melee" && !hasItemGrip)
+            {
+                // The game holds these at the model origin, often on the guard or blade: slide the hand down to meleegrip above the
+                // butt end, never up (an item whose origin is already near its butt stays as the game holds it).
+                length = Mathf.Min(0f, VRGunTuning.GetMeleeButtGrip() - towardsButt);
+            }
             return true;
+        }
+
+        // Repeated melee items (blowtorch, chainsaw): UseableMelee.tick emits the "Hit" particles with Emit(4) during Update, where the
+        // emitter is not yet where this class puts the item, so world-space particles start off the tip (the blowtorch flame came out of
+        // its middle). GUESS that the emitter simulates in world space: in local space the particles are placed relative to the emitter
+        // and drawn wherever the item is posed. The first-person model is rebuilt on each equip, so nothing to restore.
+        private static void LocalizeHitEmitter(Transform model, ItemAsset asset)
+        {
+            if (!(asset is ItemMeleeAsset melee) || !melee.isRepeated)
+            {
+                return;
+            }
+            Transform hit = model.Find("Hit");
+            if (hit == null || !hit.TryGetComponent(out ParticleSystem particles))
+            {
+                return;
+            }
+            ParticleSystem.MainModule main = particles.main;
+            ParticleSystemSimulationSpace was = main.simulationSpace;
+            main.simulationSpace = ParticleSystemSimulationSpace.Local;
+            VRLog.Info("melee: \"" + asset.name + "\" Hit particles: simulation space " + was + " -> Local, so they come out of the posed item.");
         }
 
         private static bool IsAxeName(string name)
@@ -883,6 +939,15 @@ namespace UnturnedVR.VR
                 return false;
             }
             return name.ToLowerInvariant().Contains("axe"); // also catches pickaxes
+        }
+
+        // The model's world scale once ApplyItem has set its local scale to itemBaseScale / ArmScale. Right after equip it still has
+        // itemBaseScale under the scaled root, so a handle measured then is ArmScale too long and the slide would change (the
+        // item moved along the hand) when the calibration measures it again.
+        private float FinalLossyScale(Transform model)
+        {
+            float local = model.localScale.x;
+            return Mathf.Approximately(local, 0f) ? model.lossyScale.x : model.lossyScale.x * (itemBaseScale.x / ArmScale) / local;
         }
 
         private void RestoreItemScale()

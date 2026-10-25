@@ -27,6 +27,7 @@ namespace UnturnedVR.VR
         private SleekButtonState waterReflectionButton;
         private SleekButtonState menuCameraButton;
         private ISleekToggle waterSkyToggle;
+        private ISleekToggle meleeLinesToggle;
         private ISleekSlider rotateSpeedSlider;
 
         /// <summary>The page is on screen (the pause menu is hidden behind it).</summary>
@@ -144,6 +145,26 @@ namespace UnturnedVR.VR
             rotateSpeedSlider.OnValueChanged += OnRotateSpeedDragged;
             box.AddChild(rotateSpeedSlider);
             verticalOffset += 40;
+
+            ISleekBox melee = Glazier.Get().CreateBox();
+            melee.PositionOffset_Y = verticalOffset;
+            melee.SizeOffset_X = 400;
+            melee.SizeOffset_Y = 30;
+            melee.Text = "Melee";
+            box.AddChild(melee);
+            verticalOffset += 40;
+
+            meleeLinesToggle = Glazier.Get().CreateToggle();
+            meleeLinesToggle.PositionOffset_X = ToggleLeft;
+            meleeLinesToggle.PositionOffset_Y = verticalOffset;
+            meleeLinesToggle.SizeOffset_X = 40;
+            meleeLinesToggle.SizeOffset_Y = 40;
+            meleeLinesToggle.AddLabel("Show melee lines", ESleekSide.RIGHT);
+            meleeLinesToggle.TooltipText = "Draw the physical melee lines: the blade (grey waiting, green ready, yellow swinging), the reach line out to the game's melee range (white, red while swinging, dark grey when it points away from your view and cannot hit) and a star where the last hit landed.";
+            meleeLinesToggle.Value = VRSettings.MeleeLines;
+            meleeLinesToggle.OnValueChanged += OnMeleeLinesToggled;
+            box.AddChild(meleeLinesToggle);
+            verticalOffset += 50;
 
             ISleekBox effects = Glazier.Get().CreateBox();
             effects.PositionOffset_Y = verticalOffset;
@@ -300,6 +321,7 @@ namespace UnturnedVR.VR
             pitchFlipButton.state = VRSettings.HallucinationPitchFlip ? 1 : 0;
             waterReflectionButton.state = VRSettings.WaterReflectionLevel;
             waterSkyToggle.Value = VRSettings.WaterSkyReflection;
+            meleeLinesToggle.Value = VRSettings.MeleeLines;
             menuCameraButton.state = VRSettings.MenuCameraFollow ? 0 : 1;
             rotateSpeedSlider.Value = RotateSpeedToSlider(VRSettings.BuildingRotateSpeedPercent);
             rotateSpeedSlider.UpdateLabel(RotateSpeedLabel(VRSettings.BuildingRotateSpeedPercent));
@@ -363,6 +385,12 @@ namespace UnturnedVR.VR
         {
             VRSettings.SetWaterSkyReflection(state);
             VRLog.Info("settings page: sky in water reflections " + (state ? "on" : "off") + ".");
+        }
+
+        private void OnMeleeLinesToggled(ISleekToggle toggle, bool state)
+        {
+            VRSettings.SetMeleeLines(state);
+            VRLog.Info("settings page: melee lines " + (state ? "on" : "off") + ".");
         }
 
         private void OnWaterReflectionSwapped(SleekButtonState button, int index)

@@ -58,7 +58,7 @@ namespace UnturnedVR.Net
                 {
                     ++patched;
                 }
-                VRLog.Info("net: server patches applied: " + patched + " method(s) (rocket launcher muzzle).");
+                VRLog.Info("net: server patches applied: " + patched + " method(s) (rocket launcher muzzle, instant melee hits).");
             }
             catch (Exception e)
             {

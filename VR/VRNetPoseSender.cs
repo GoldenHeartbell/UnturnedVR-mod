@@ -191,6 +191,9 @@ namespace UnturnedVR.VR
 
             int itemHand = VRArms.Active ? VRArms.ItemHand : -1;
             pose.TwoHanded = VRArms.Active && VRHold.Both;
+            // This client version lands one-shot melee hits on the swing's first tick (VRMelee.InstantHits). Not per item: the
+            // client and the server each check the equipped item themselves (see VRPoseData.HitsOnFirstTick).
+            pose.HitsOnFirstTick = true;
             pose.ItemHand = itemHand == VRHands.Left ? VRPoseData.ItemHandLeft : itemHand == VRHands.Right ? VRPoseData.ItemHandRight : VRPoseData.ItemHandNone;
 
             // The held item as it sits in the hand (hold, two-handed aim and all), so other players' games put it there too.
