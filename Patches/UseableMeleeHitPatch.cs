@@ -31,6 +31,27 @@ namespace UnturnedVR.Patches
         }
     }
 
+    /// <summary>
+    /// TEST: a short swing cooldown. UseableMelee.isUseable (private getter: the last attack's anim has played out, checked by
+    /// startPrimary / startSecondary and VRMelee) is true for a one-shot swing while VRMelee.InstantHits once
+    /// Net.VRNetMeleeCooldown.Seconds (0.5 s) have passed since the last swing, and the last hit has landed (isBusy, cleared by
+    /// that hit on the swing's first tick). Stamina for the strong attack still applies. The server
+    /// (Net/UseableMeleeServerCooldownPatch, protocol 7) does the same for VR players.
+    /// </summary>
+    [HarmonyPatch(typeof(UseableMelee), "isUseable", MethodType.Getter)]
+    internal static class UseableMeleeCooldownPatch
+    {
+        private static void Postfix(UseableMelee __instance, ref bool __result)
+        {
+            if (!__result && VR.VRMelee.InstantHits && __instance.channel != null && __instance.channel.IsLocalPlayer
+                && __instance.player.equipment.asset is ItemMeleeAsset asset && !asset.isRepeated
+                && Net.VRNetMeleeCooldown.HasPassed(__instance))
+            {
+                __result = true;
+            }
+        }
+    }
+
     [HarmonyPatch(typeof(UseableMelee), "fire")]
     internal static class UseableMeleeHitPatch
     {

@@ -76,6 +76,27 @@ namespace UnturnedVR.VR
             instance.SendShot(eye, player, muzzlePosition, muzzleRotation);
         }
 
+        /// <summary>
+        /// Called from VRThrow at the release of a hand throw: the hand and the throw direction go to the server as a shot pose, ahead
+        /// of the input packet that starts the throw, and the server throws its throwable from there (Net/UseableThrowableServerPatch).
+        /// Nothing happens in singleplayer or on a server without the mod.
+        /// </summary>
+        public static void SendThrow(Player player, Vector3 handPosition, Quaternion throwRotation)
+        {
+            if (instance == null || instance.receiveOnly || !VRNet.ServerAcceptsPoses)
+            {
+                return;
+            }
+
+            Camera eye = VRRig.ActiveCamera;
+            if (player == null || eye == null)
+            {
+                return;
+            }
+
+            instance.SendShot(eye, player, handPosition, throwRotation);
+        }
+
         private void SendShot(Camera eye, Player player, Vector3 muzzlePosition, Quaternion muzzleRotation)
         {
             if (sendShotPose == null)

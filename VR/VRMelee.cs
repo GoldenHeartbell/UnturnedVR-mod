@@ -52,7 +52,7 @@ namespace UnturnedVR.VR
         // A weapon swing whose hand (the controller, not the tip: a long blade turns a wrist flick into tip speed, and the tip
         // showed one-frame peaks of 30-90 m/s) peaked at this speed or more is the game's strong attack (secondary: more damage,
         // uses stamina, longer cooldown), when the player has the stamina for it; else the weak one (primary). GUESS, tune in the headset.
-        private const float StrongSpeed = 4.5f;
+        private const float StrongSpeed = 8f;
 
         /// <summary>
         /// Every one-shot melee swing of the local player hits on its first input tick (UseableMeleeDamageablePatch), not partway
@@ -302,7 +302,7 @@ namespace UnturnedVR.VR
                     toolRayFrame = Time.frameCount;
                     toolOrigin = weapon.Samples[0];
                     toolDirection = axis.normalized;
-                    weapon.ShowTool(toolOrigin, toolDirection, reach);
+                    weapon.EnterToolMode();
                 }
                 return;
             }
@@ -319,7 +319,6 @@ namespace UnturnedVR.VR
             string kind = TargetKind(target);
             bool creature = kind == "zombie" || kind == "player" || kind == "animal";
             string limb = creature ? DamageTool.getLimb(target).ToString() : "-";
-            swinger.MarkHit(hit.point);
             Log(swinger.Name + " contact " + kind + " '" + hit.collider.name + "' limb=" + limb + ", "
                 + (fist ? "punch" : swinger.Stab ? "stab" : "slash") + " with the " + SampleName(sample) + ", tip "
                 + speed.ToString("0.0") + " m/s, peak " + swinger.PeakSpeed.ToString("0.0") + " m/s, "
@@ -463,7 +462,6 @@ namespace UnturnedVR.VR
                 Vector3 reachOrigin = Samples[2];
                 Vector3 reachDirection = (Samples[2] - Samples[0]).normalized;
                 float reachLength = Mathf.Max(0f, reach - Vector3.Distance(head, Samples[2]));
-                DrawLines(reachOrigin, reachDirection, reachLength, InView(reachDirection, view));
 
                 // The tip's motion in two frames: the rig (walking or a vehicle does not count) and the head turned to its
                 // heading (turning the whole body with the weapon held out does not count). A swing must be fast in both.
@@ -622,110 +620,16 @@ namespace UnturnedVR.VR
                 {
                     Log(Name + " off");
                 }
-                HideLines();
                 state = State.Idle;
                 fastFrames = 0;
                 previousValid = false;
             }
 
-            // ---- debug lines (VRDebugFlags.MeleeLines) -----------------------------------------------------------
-            // Blade base->tip: grey = waiting to re-arm, green = armed, yellow = swinging. Reach line from the tip out to the
-            // game's range along the head->tip line: white, red while swinging. Magenta star = the last hit point, for 1 s.
-            private LineRenderer bladeLine, reachLine, hitMark;
-            private Vector3 hitMarkPoint;
-            private float hitMarkUntil = -1f;
-            private readonly Vector3[] starPoints = new Vector3[8];
-
-            /// <summary>A repeated tool: the blade and the game's ray along it (white), no swing states.</summary>
-            public void ShowTool(Vector3 origin, Vector3 direction, float length)
+            /// <summary>A repeated tool (chainsaw, blowtorch): no swing states, the game's own timing.</summary>
+            public void EnterToolMode()
             {
                 state = State.Idle;
-                DrawLines(origin, direction, length, true);
             }
-
-            public void MarkHit(Vector3 point)
-            {
-                hitMarkPoint = point;
-                hitMarkUntil = Time.time + 1f;
-            }
-
-            private void DrawLines(Vector3 reachOrigin, Vector3 reachDirection, float reachLength, bool inView)
-            {
-                if (!VRDebugFlags.MeleeLines && !VRSettings.MeleeLines)
-                {
-                    HideLines();
-                    return;
-                }
-                if (bladeLine == null)
-                {
-                    bladeLine = CreateLine(Name + " blade", 2, 0.006f);
-                    reachLine = CreateLine(Name + " reach", 2, 0.004f);
-                    hitMark = CreateLine(Name + " hit", starPoints.Length, 0.01f);
-                }
-                // On the mod's own layer, like the holster markers: the overlay camera draws it, the game's eye camera may not
-                // draw the default layer at all. The layer can be found after the lines were made, so it is checked each frame.
-                if (VRGui.PanelLayer >= 0 && bladeLine.gameObject.layer != VRGui.PanelLayer)
-                {
-                    bladeLine.gameObject.layer = VRGui.PanelLayer;
-                    reachLine.gameObject.layer = VRGui.PanelLayer;
-                    hitMark.gameObject.layer = VRGui.PanelLayer;
-                }
-                Color blade = state == State.Swinging ? Color.yellow : state == State.Armed ? Color.green : Color.grey;
-                bladeLine.startColor = bladeLine.endColor = blade;
-                bladeLine.SetPosition(0, Samples[0]);
-                bladeLine.SetPosition(1, Samples[2]);
-                bladeLine.enabled = true;
-
-                // Dark grey: outside the view, the line does not hit (only the blade does).
-                Color line = !inView ? new Color(0.25f, 0.25f, 0.25f) : state == State.Swinging ? Color.red : Color.white;
-                reachLine.startColor = reachLine.endColor = line;
-                reachLine.SetPosition(0, reachOrigin);
-                reachLine.SetPosition(1, reachOrigin + reachDirection * reachLength);
-                reachLine.enabled = true;
-
-                bool showHit = Time.time < hitMarkUntil;
-                if (showHit)
-                {
-                    const float r = 0.06f;
-                    starPoints[0] = hitMarkPoint - Vector3.right * r;
-                    starPoints[1] = hitMarkPoint + Vector3.right * r;
-                    starPoints[2] = hitMarkPoint;
-                    starPoints[3] = hitMarkPoint - Vector3.up * r;
-                    starPoints[4] = hitMarkPoint + Vector3.up * r;
-                    starPoints[5] = hitMarkPoint;
-                    starPoints[6] = hitMarkPoint - Vector3.forward * r;
-                    starPoints[7] = hitMarkPoint + Vector3.forward * r;
-                    hitMark.startColor = hitMark.endColor = Color.magenta;
-                    hitMark.SetPositions(starPoints);
-                }
-                hitMark.enabled = showHit;
-            }
-
-            private void HideLines()
-            {
-                if (bladeLine != null)
-                {
-                    bladeLine.enabled = false;
-                    reachLine.enabled = false;
-                    hitMark.enabled = false;
-                }
-            }
-        }
-
-        private static LineRenderer CreateLine(string name, int points, float width)
-        {
-            GameObject go = new GameObject("UnturnedVR Melee " + name);
-            Object.DontDestroyOnLoad(go);
-            LineRenderer line = go.AddComponent<LineRenderer>();
-            line.useWorldSpace = true;
-            line.material = new Material(Canvas.GetDefaultCanvasMaterial());
-            line.startWidth = width;
-            line.endWidth = width;
-            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            line.receiveShadows = false;
-            line.positionCount = points;
-            line.enabled = false;
-            return line;
         }
 
         // Diagnostic for a missed swing: what the reach line passes through on any layer, triggers included, out to twice the

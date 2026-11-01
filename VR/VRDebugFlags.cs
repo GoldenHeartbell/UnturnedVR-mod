@@ -55,13 +55,6 @@ namespace UnturnedVR.VR
         /// </summary>
         public static bool LogMelee = false;
 
-        /// <summary>
-        /// Draws the physical melee lines (VRMelee): the blade (grey waiting / green armed / yellow swinging), the reach line out
-        /// to the game's melee range (white, red while swinging) and the last hit point (magenta). Players switch them on with the
-        /// "Show melee lines" setting (VRSettings.MeleeLines); this flag draws them regardless.
-        /// </summary>
-        public static bool MeleeLines = false;
-
         // Runtime bisect switches for the item slowdown (RightCtrl + keypad 1-4, see VRPerf). All off = normal behaviour.
         public static bool PerfNoViewmodel;
         public static bool PerfNoItemPose;

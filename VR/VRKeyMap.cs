@@ -115,6 +115,8 @@ namespace UnturnedVR.VR
             Refresh();
             if (VRAttachMenu.Wanted && key == ControlsSettings.attach) return true;
             if (VRMelee.KeyHeld(key)) return true;
+            if (VRFishing.KeyHeld(key)) return true;
+            if (VRThrow.KeyHeld(key)) return true;
             foreach (Entry e in entries)
             {
                 if (e.Held && e.Key() == key) return true;
@@ -241,6 +243,14 @@ namespace UnturnedVR.VR
                 if ((e.Role == 1 || e.Role == 2) && VRMelee.TakesTriggers)
                 {
                     raw = false; // a one-shot melee weapon attacks by swinging it (VRMelee), not with the triggers
+                }
+                if ((e.Role == 1 || e.Role == 2) && VRThrow.TakesTriggers)
+                {
+                    raw = false; // a throwable is thrown by throwing the hand (VRThrow): overhand far, underhand short
+                }
+                if (e.Role == 1 && VRFishing.TakesTrigger)
+                {
+                    raw = false; // a fishing rod is cast by throwing it (VRFishing); the trigger only reels in and plays the catch
                 }
                 if (e.Role == 3 || e.Role == 5)
                 {

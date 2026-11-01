@@ -77,6 +77,13 @@ namespace UnturnedVR.VR
         public static Vector3 ItemPosition { get; private set; }
         public static Quaternion ItemRotation { get; private set; } = Quaternion.identity;
 
+        /// <summary>
+        /// World unit vector from the hand towards the tip of a slid item (fishing rod, axe, other melee) this frame, for the
+        /// physical fishing cast (VRFishing). Valid only in the frame <see cref="ItemTipFrame"/>.
+        /// </summary>
+        public static Vector3 ItemTipAxis { get; private set; } = Vector3.forward;
+        public static int ItemTipFrame { get; private set; } = -10;
+
         private PlayerAnimator animator;
         private Transform root;
         private Transform viewmodel;
@@ -363,6 +370,8 @@ namespace UnturnedVR.VR
             if (allowCalibrate)
             {
                 VRMelee.Update(); // once per frame (its speeds are per frame), with the blade in its final place
+                VRFishing.Update(); // same for the rod's cast gesture
+                VRThrow.Update(); // and the throwable's throw
                 VRWristStatus.ArmsPosed(); // the wrist panel's gate reads the forearm in this final pose
             }
 
@@ -739,6 +748,11 @@ namespace UnturnedVR.VR
 
             ItemPosition = position;
             ItemRotation = rotation;
+            if (itemSlides)
+            {
+                ItemTipAxis = rotation * slideTipLocal;
+                ItemTipFrame = Time.frameCount;
+            }
 
             if (itemIsGun)
             {

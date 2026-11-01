@@ -15,7 +15,10 @@ namespace UnturnedVR.Net
         // 5: while an item hand is set, the pose has the held item's own pose (ItemPosition, ItemRotation), relayed so other players see it in the hand.
         // 6: the pose has an instant-melee bit: the client lands a one-shot melee hit on the swing's first input tick, and the server
         //    does the same for that player (VRNetServerMelee), so a physical swing hits on contact online too.
-        public const byte Version = 6;
+        // 7: TEST: a short melee swing cooldown (0.5 s, VRNetMeleeCooldown) instead of the anim-length one for VR players
+        //    (isUseable), on the client and the server alike. Hand throws: a shot pose
+        //    at the release of a throwable (hand, throw direction); the server throws from it at once (UseableThrowableServerPatch).
+        public const byte Version = 7;
     }
 
     /// <summary>

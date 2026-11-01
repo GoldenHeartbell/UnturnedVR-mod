@@ -27,7 +27,7 @@ namespace UnturnedVR.VR
         private SleekButtonState waterReflectionButton;
         private SleekButtonState menuCameraButton;
         private ISleekToggle waterSkyToggle;
-        private ISleekToggle meleeLinesToggle;
+        private ISleekToggle fishingYankToggle;
         private ISleekSlider rotateSpeedSlider;
 
         /// <summary>The page is on screen (the pause menu is hidden behind it).</summary>
@@ -146,24 +146,16 @@ namespace UnturnedVR.VR
             box.AddChild(rotateSpeedSlider);
             verticalOffset += 40;
 
-            ISleekBox melee = Glazier.Get().CreateBox();
-            melee.PositionOffset_Y = verticalOffset;
-            melee.SizeOffset_X = 400;
-            melee.SizeOffset_Y = 30;
-            melee.Text = "Melee";
-            box.AddChild(melee);
-            verticalOffset += 40;
-
-            meleeLinesToggle = Glazier.Get().CreateToggle();
-            meleeLinesToggle.PositionOffset_X = ToggleLeft;
-            meleeLinesToggle.PositionOffset_Y = verticalOffset;
-            meleeLinesToggle.SizeOffset_X = 40;
-            meleeLinesToggle.SizeOffset_Y = 40;
-            meleeLinesToggle.AddLabel("Show melee lines", ESleekSide.RIGHT);
-            meleeLinesToggle.TooltipText = "Draw the physical melee lines: the blade (grey waiting, green ready, yellow swinging), the reach line out to the game's melee range (white, red while swinging, dark grey when it points away from your view and cannot hit) and a star where the last hit landed.";
-            meleeLinesToggle.Value = VRSettings.MeleeLines;
-            meleeLinesToggle.OnValueChanged += OnMeleeLinesToggled;
-            box.AddChild(meleeLinesToggle);
+            fishingYankToggle = Glazier.Get().CreateToggle();
+            fishingYankToggle.PositionOffset_X = ToggleLeft;
+            fishingYankToggle.PositionOffset_Y = verticalOffset;
+            fishingYankToggle.SizeOffset_X = 40;
+            fishingYankToggle.SizeOffset_Y = 40;
+            fishingYankToggle.AddLabel("Fishing: set the hook with a rod motion", ESleekSide.RIGHT);
+            fishingYankToggle.TooltipText = "When a fish bites, pull the rod up sharply to set the hook instead of pressing the trigger. Only active while a fish is on the line. The trigger keeps working, and the catch challenge is still played with the trigger.";
+            fishingYankToggle.Value = VRSettings.FishingYank;
+            fishingYankToggle.OnValueChanged += OnFishingYankToggled;
+            box.AddChild(fishingYankToggle);
             verticalOffset += 50;
 
             ISleekBox effects = Glazier.Get().CreateBox();
@@ -321,7 +313,7 @@ namespace UnturnedVR.VR
             pitchFlipButton.state = VRSettings.HallucinationPitchFlip ? 1 : 0;
             waterReflectionButton.state = VRSettings.WaterReflectionLevel;
             waterSkyToggle.Value = VRSettings.WaterSkyReflection;
-            meleeLinesToggle.Value = VRSettings.MeleeLines;
+            fishingYankToggle.Value = VRSettings.FishingYank;
             menuCameraButton.state = VRSettings.MenuCameraFollow ? 0 : 1;
             rotateSpeedSlider.Value = RotateSpeedToSlider(VRSettings.BuildingRotateSpeedPercent);
             rotateSpeedSlider.UpdateLabel(RotateSpeedLabel(VRSettings.BuildingRotateSpeedPercent));
@@ -387,10 +379,10 @@ namespace UnturnedVR.VR
             VRLog.Info("settings page: sky in water reflections " + (state ? "on" : "off") + ".");
         }
 
-        private void OnMeleeLinesToggled(ISleekToggle toggle, bool state)
+        private void OnFishingYankToggled(ISleekToggle toggle, bool state)
         {
-            VRSettings.SetMeleeLines(state);
-            VRLog.Info("settings page: melee lines " + (state ? "on" : "off") + ".");
+            VRSettings.SetFishingYank(state);
+            VRLog.Info("settings page: fishing hook set by rod motion " + (state ? "on" : "off") + ".");
         }
 
         private void OnWaterReflectionSwapped(SleekButtonState button, int index)

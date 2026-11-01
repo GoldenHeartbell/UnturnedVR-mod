@@ -272,32 +272,36 @@ namespace UnturnedVR.VR
             ConvenientSavedata.get().write(WaterSkyReflectionKey, on);
         }
 
-        private const string MeleeLinesKey = "UnturnedVR.melee.lines";
-        private static bool meleeLinesLoaded;
-        private static bool meleeLinesValue;
+        private const string FishingYankKey = "UnturnedVR.fishing.yank";
+        private static bool fishingYankLoaded;
+        private static bool fishingYankValue = true;
 
         /// <summary>
-        /// Physical melee lines (VRMelee): the blade, the reach line and a star where the last hit landed. False (the default)
-        /// = not drawn. VRDebugFlags.MeleeLines also draws them.
+        /// A fish on the hook is taken by yanking the rod back (VRFishing), like pressing the trigger in the game's catch window.
+        /// True (the default) = on. The trigger always works too.
         /// </summary>
-        public static bool MeleeLines
+        public static bool FishingYank
         {
             get
             {
-                if (!meleeLinesLoaded)
+                if (!fishingYankLoaded)
                 {
-                    meleeLinesLoaded = true;
-                    ConvenientSavedata.get().read(MeleeLinesKey, out meleeLinesValue); // missing = false
+                    fishingYankLoaded = true;
+                    bool saved;
+                    if (ConvenientSavedata.get().read(FishingYankKey, out saved)) // missing = on
+                    {
+                        fishingYankValue = saved;
+                    }
                 }
-                return meleeLinesValue;
+                return fishingYankValue;
             }
         }
 
-        public static void SetMeleeLines(bool on)
+        public static void SetFishingYank(bool on)
         {
-            meleeLinesLoaded = true;
-            meleeLinesValue = on;
-            ConvenientSavedata.get().write(MeleeLinesKey, on);
+            fishingYankLoaded = true;
+            fishingYankValue = on;
+            ConvenientSavedata.get().write(FishingYankKey, on);
         }
 
         /// <summary>Highest water reflection level on the settings page: 0 Off, 1 Low, 2 Medium, 3 High, 4 Ultra.</summary>

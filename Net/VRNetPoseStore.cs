@@ -86,6 +86,24 @@ namespace UnturnedVR.Net
             return TryTakeShot(id, maxAgeSeconds, Time.realtimeSinceStartup, out pose, out ageSeconds);
         }
 
+        /// <summary>Whether a shot pose that arrived at most <paramref name="maxAgeSeconds"/> ago is queued, without taking it.</summary>
+        public static bool HasShot(ulong id, float maxAgeSeconds)
+        {
+            if (!shots.TryGetValue(id, out Queue<Entry> queue))
+            {
+                return false;
+            }
+            float now = Time.realtimeSinceStartup;
+            foreach (Entry entry in queue)
+            {
+                if (now - entry.ReceivedAt <= maxAgeSeconds)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // The clock is a parameter so the queue can be tested outside the game.
         internal static bool StoreShot(ulong id, in VRPoseData pose, float now)
         {
